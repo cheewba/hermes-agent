@@ -21,7 +21,7 @@ class TestResolveCdpOverride:
         response.raise_for_status.return_value = None
         response.json.return_value = {"webSocketDebuggerUrl": WS_URL}
 
-        with patch("tools.browser_tool.requests.get", return_value=response) as mock_get:
+        with patch("tools.browser_backends.agent_browser.requests.get", return_value=response) as mock_get:
             resolved = _resolve_cdp_override(HTTP_URL)
 
         assert resolved == WS_URL
@@ -34,7 +34,7 @@ class TestResolveCdpOverride:
         response.raise_for_status.return_value = None
         response.json.return_value = {"webSocketDebuggerUrl": WS_URL}
 
-        with patch("tools.browser_tool.requests.get", return_value=response) as mock_get:
+        with patch("tools.browser_backends.agent_browser.requests.get", return_value=response) as mock_get:
             resolved = _resolve_cdp_override(f"ws://{HOST}:{PORT}")
 
         assert resolved == WS_URL
@@ -43,5 +43,25 @@ class TestResolveCdpOverride:
     def test_falls_back_to_raw_url_when_discovery_fails(self):
         from tools.browser_tool import _resolve_cdp_override
 
-        with patch("tools.browser_tool.requests.get", side_effect=RuntimeError("boom")):
+        with patch("tools.browser_backends.agent_browser.requests.get", side_effect=RuntimeError("boom")):
             assert _resolve_cdp_override(HTTP_URL) == HTTP_URL
+
+
+class TestAgentBrowserLocality:
+    def test_is_local_false_when_cdp_override_set(self, monkeypatch):
+        from tools.browser_backends.agent_browser import AgentBrowserBackend
+
+        backend = AgentBrowserBackend()
+        monkeypatch.setattr(backend, "_get_cloud_provider", lambda: None)
+        monkeypatch.setenv("BROWSER_CDP_URL", "ws://remote-host:9222/devtools/browser/abc")
+
+        assert backend.is_local() is False
+
+    def test_is_local_true_without_cdp_and_cloud(self, monkeypatch):
+        from tools.browser_backends.agent_browser import AgentBrowserBackend
+
+        backend = AgentBrowserBackend()
+        monkeypatch.setattr(backend, "_get_cloud_provider", lambda: None)
+        monkeypatch.delenv("BROWSER_CDP_URL", raising=False)
+
+        assert backend.is_local() is True
