@@ -271,17 +271,17 @@ def camofox_snapshot(full: bool = False, task_id: Optional[str] = None,
         refs_count = data.get("refsCount", 0)
 
         # Apply same summarization logic as the main browser tool
-        from tools.browser_tool import (
+        from tools.browser_snapshot import (
             SNAPSHOT_SUMMARIZE_THRESHOLD,
-            _extract_relevant_content,
-            _truncate_snapshot,
+            extract_relevant_content,
+            truncate_snapshot,
         )
 
         if len(snapshot) > SNAPSHOT_SUMMARIZE_THRESHOLD:
             if user_task:
-                snapshot = _extract_relevant_content(snapshot, user_task)
+                snapshot = extract_relevant_content(snapshot, user_task)
             else:
-                snapshot = _truncate_snapshot(snapshot)
+                snapshot = truncate_snapshot(snapshot)
 
         return json.dumps({
             "success": True,

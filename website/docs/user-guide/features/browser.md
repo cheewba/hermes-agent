@@ -32,6 +32,23 @@ Key capabilities:
 
 ## Setup
 
+### Select backend (new)
+
+Hermes now has a first-class browser backend selector:
+
+```yaml
+# ~/.hermes/config.yaml
+browser:
+  backend: agent-browser   # agent-browser | patchright | camofox
+```
+
+Resolution order:
+1. `browser.backend` when explicitly set
+2. `CAMOFOX_URL` fallback (for backward compatibility)
+3. `agent-browser` default
+
+`BROWSER_CDP_URL` is still supported, but it only affects the `agent-browser` backend (it does not select a backend).
+
 ### Browserbase cloud mode
 
 To use Browserbase-managed cloud browsers, add:
@@ -130,6 +147,53 @@ When connected via CDP, all browser tools (`browser_navigate`, `browser_click`, 
 ### Local browser mode
 
 If you do **not** set any cloud credentials and don't use `/browser connect`, Hermes can still use the browser tools through a local Chromium install driven by `agent-browser`.
+
+### Patchright backend (native)
+
+To run browser tools natively through Patchright (without `agent-browser`), set:
+
+```yaml
+browser:
+  backend: patchright
+  patchright:
+    headless: true
+    # optional: custom browser binary
+    # executable_path: /usr/bin/google-chrome
+    # optional: auto-start virtual display on headless Linux
+    # xvfb:
+    #   enabled: true
+    #   display: ":99"
+    #   screen: "1920x1080x24"
+```
+
+Patchright runtime knobs (optional):
+- `browser.patchright.channel`
+- `browser.patchright.executable_path`
+- `browser.patchright.cdp_url` (or `BROWSER_CDP_URL` env var)
+- `browser.patchright.launch_timeout_ms`
+- `browser.patchright.action_timeout_ms`
+- `browser.patchright.user_data_base`
+- `browser.patchright.xvfb.enabled` / `display` / `screen` / `force`
+
+Behavior:
+- If `cdp_url`/`BROWSER_CDP_URL` is set, Patchright attaches to that Chrome via CDP.
+- If no CDP URL is provided, Patchright launches its own local Chrome/Chromium instance.
+- `executable_path` lets you pick a specific Chrome/Chromium binary for local launch mode.
+- `xvfb.enabled: true` auto-starts Xvfb when no `DISPLAY` is available (or always when `force: true`).
+
+Example (headful Linux server with explicit Chrome binary):
+
+```yaml
+browser:
+  backend: patchright
+  patchright:
+    headless: false
+    executable_path: /usr/bin/google-chrome
+    xvfb:
+      enabled: true
+      display: ":99"
+      screen: "1920x1080x24"
+```
 
 ### Optional Environment Variables
 

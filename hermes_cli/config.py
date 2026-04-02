@@ -243,6 +243,7 @@ DEFAULT_CONFIG = {
     },
     
     "browser": {
+        "backend": "",  # empty = auto-detect (CAMOFOX_URL -> camofox, otherwise agent-browser)
         "inactivity_timeout": 120,
         "command_timeout": 30,  # Timeout for browser commands in seconds (screenshot, navigate, etc.)
         "record_sessions": False,  # Auto-record browser sessions as WebM videos
@@ -253,6 +254,29 @@ DEFAULT_CONFIG = {
             # Requires Camofox server to be configured with CAMOFOX_PROFILE_DIR.
             # When false (default), each session gets a random userId (ephemeral).
             "managed_persistence": False,
+        },
+        "patchright": {
+            "headless": True,
+            "channel": "",
+            "executable_path": "",  # optional browser executable path (Chrome/Chromium binary)
+            "cdp_url": "",  # optional CDP endpoint; empty -> launch local Chrome/Chromium
+            "launch_timeout_ms": 30000,
+            "action_timeout_ms": 20000,
+            "user_data_base": "",  # empty -> ~/.hermes/cache/patchright_profiles
+            "vision_model": "",  # optional override for browser_vision under patchright
+            "proxy": {
+                "url": "",  # full proxy URL, supports credentials: http://user:pass@host:port
+                "server": "",  # host:port or scheme://host:port (overrides url host when set)
+                "username": "",  # optional explicit username (overrides url username)
+                "password": "",  # optional explicit password (overrides url password)
+                "bypass": "",  # optional comma-separated bypass list (Playwright format)
+            },
+            "xvfb": {
+                "enabled": False,  # auto-start Xvfb for headful browser on headless hosts
+                "display": ":99",
+                "screen": "1920x1080x24",
+                "force": False,  # if true, start/use configured Xvfb even when DISPLAY already exists
+            },
         },
     },
 
@@ -517,7 +541,7 @@ DEFAULT_CONFIG = {
     },
 
     # Config schema version - bump this when adding new required fields
-    "_config_version": 11,
+    "_config_version": 12,
 }
 
 # =============================================================================

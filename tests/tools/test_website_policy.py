@@ -310,11 +310,14 @@ def test_browser_navigate_returns_policy_block(monkeypatch):
             "message": "Blocked by website policy",
         },
     )
-    monkeypatch.setattr(
-        browser_tool,
-        "_run_browser_command",
-        lambda *args, **kwargs: pytest.fail("browser command should not run for blocked URL"),
-    )
+    class _NeverBackend:
+        def is_local(self):
+            return True
+
+        def navigate(self, task_id, url):
+            pytest.fail("browser backend should not run for blocked URL")
+
+    monkeypatch.setattr(browser_tool, "_get_backend", lambda: _NeverBackend())
 
     result = json.loads(browser_tool.browser_navigate("https://blocked.test"))
 

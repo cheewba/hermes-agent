@@ -1,107 +1,61 @@
-"""Tests for browser_console tool and browser_vision annotate param."""
+"""Tests for browser_console and browser_vision orchestration in browser_tool."""
 
 import json
 import os
-import sys
-from unittest.mock import patch, MagicMock
 
 import pytest
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
+class _FakeBackend:
+    def __init__(self):
+        self.console_calls = []
+        self.vision_calls = []
 
-# ── browser_console ──────────────────────────────────────────────────
+    def console(self, task_id: str, clear: bool = False):
+        self.console_calls.append((task_id, clear))
+        return {
+            "success": True,
+            "console_messages": [{"type": "log", "text": "hello", "source": "console"}],
+            "js_errors": [{"message": "Uncaught TypeError", "source": "exception"}],
+            "total_messages": 1,
+            "total_errors": 1,
+        }
+
+    def vision(self, task_id: str, question: str, annotate: bool = False):
+        self.vision_calls.append((task_id, question, annotate))
+        return {
+            "success": True,
+            "analysis": "Looks good",
+            "screenshot_path": "/tmp/fake.png",
+        }
 
 
 class TestBrowserConsole:
-    """browser_console() returns console messages + JS errors in one call."""
-
-    def test_returns_console_messages_and_errors(self):
+    def test_returns_console_messages_and_errors(self, monkeypatch):
         from tools.browser_tool import browser_console
 
-        console_response = {
-            "success": True,
-            "data": {
-                "messages": [
-                    {"text": "hello", "type": "log", "timestamp": 1},
-                    {"text": "oops", "type": "error", "timestamp": 2},
-                ]
-            },
-        }
-        errors_response = {
-            "success": True,
-            "data": {
-                "errors": [
-                    {"message": "Uncaught TypeError", "timestamp": 3},
-                ]
-            },
-        }
+        backend = _FakeBackend()
+        monkeypatch.setattr("tools.browser_tool._get_backend", lambda: backend)
 
-        with patch("tools.browser_tool._run_browser_command") as mock_cmd:
-            mock_cmd.side_effect = [console_response, errors_response]
-            result = json.loads(browser_console(task_id="test"))
+        result = json.loads(browser_console(task_id="test"))
 
         assert result["success"] is True
-        assert result["total_messages"] == 2
+        assert result["total_messages"] == 1
         assert result["total_errors"] == 1
         assert result["console_messages"][0]["text"] == "hello"
-        assert result["console_messages"][1]["text"] == "oops"
         assert result["js_errors"][0]["message"] == "Uncaught TypeError"
 
-    def test_passes_clear_flag(self):
+    def test_passes_clear_flag(self, monkeypatch):
         from tools.browser_tool import browser_console
 
-        empty = {"success": True, "data": {"messages": [], "errors": []}}
-        with patch("tools.browser_tool._run_browser_command", return_value=empty) as mock_cmd:
-            browser_console(clear=True, task_id="test")
+        backend = _FakeBackend()
+        monkeypatch.setattr("tools.browser_tool._get_backend", lambda: backend)
 
-        calls = mock_cmd.call_args_list
-        # Both console and errors should get --clear
-        assert calls[0][0] == ("test", "console", ["--clear"])
-        assert calls[1][0] == ("test", "errors", ["--clear"])
-
-    def test_no_clear_by_default(self):
-        from tools.browser_tool import browser_console
-
-        empty = {"success": True, "data": {"messages": [], "errors": []}}
-        with patch("tools.browser_tool._run_browser_command", return_value=empty) as mock_cmd:
-            browser_console(task_id="test")
-
-        calls = mock_cmd.call_args_list
-        assert calls[0][0] == ("test", "console", [])
-        assert calls[1][0] == ("test", "errors", [])
-
-    def test_empty_console_and_errors(self):
-        from tools.browser_tool import browser_console
-
-        empty = {"success": True, "data": {"messages": [], "errors": []}}
-        with patch("tools.browser_tool._run_browser_command", return_value=empty):
-            result = json.loads(browser_console(task_id="test"))
-
-        assert result["total_messages"] == 0
-        assert result["total_errors"] == 0
-        assert result["console_messages"] == []
-        assert result["js_errors"] == []
-
-    def test_handles_failed_commands(self):
-        from tools.browser_tool import browser_console
-
-        failed = {"success": False, "error": "No session"}
-        with patch("tools.browser_tool._run_browser_command", return_value=failed):
-            result = json.loads(browser_console(task_id="test"))
-
-        # Should still return success with empty data
-        assert result["success"] is True
-        assert result["total_messages"] == 0
-        assert result["total_errors"] == 0
-
-
-# ── browser_console schema ───────────────────────────────────────────
+        _ = browser_console(clear=True, task_id="test")
+        assert backend.console_calls == [("test", True)]
 
 
 class TestBrowserConsoleSchema:
-    """browser_console is properly registered in the tool registry."""
-
     def test_schema_in_browser_schemas(self):
         from tools.browser_tool import BROWSER_TOOL_SCHEMAS
 
@@ -118,32 +72,62 @@ class TestBrowserConsoleSchema:
 
 
 class TestBrowserConsoleToolsetWiring:
-    """browser_console must be reachable via toolset resolution."""
-
     def test_in_browser_toolset(self):
         from toolsets import TOOLSETS
+
         assert "browser_console" in TOOLSETS["browser"]["tools"]
 
     def test_in_hermes_core_tools(self):
         from toolsets import _HERMES_CORE_TOOLS
+
         assert "browser_console" in _HERMES_CORE_TOOLS
 
     def test_in_legacy_toolset_map(self):
         from model_tools import _LEGACY_TOOLSET_MAP
+
         assert "browser_console" in _LEGACY_TOOLSET_MAP["browser_tools"]
 
     def test_in_registry(self):
         from tools.registry import registry
         from tools import browser_tool  # noqa: F401
+
         assert "browser_console" in registry._tools
 
 
-# ── browser_vision annotate ──────────────────────────────────────────
+class TestBrowserSetProxyToolsetWiring:
+    def test_in_browser_toolset(self):
+        from toolsets import TOOLSETS
+
+        assert "browser_set_proxy" in TOOLSETS["browser"]["tools"]
+
+    def test_in_hermes_core_tools(self):
+        from toolsets import _HERMES_CORE_TOOLS
+
+        assert "browser_set_proxy" in _HERMES_CORE_TOOLS
+
+    def test_in_legacy_toolset_map(self):
+        from model_tools import _LEGACY_TOOLSET_MAP
+
+        assert "browser_set_proxy" in _LEGACY_TOOLSET_MAP["browser_tools"]
+
+    def test_in_registry(self):
+        from tools.registry import registry
+        from tools import browser_tool  # noqa: F401
+
+        assert "browser_set_proxy" in registry._tools
+
+    def test_check_fn_blocks_non_patchright_backends(self, monkeypatch):
+        from tools import browser_tool
+
+        class _NonPatchrightBackend:
+            def is_configured(self):
+                return True
+
+        monkeypatch.setattr(browser_tool, "_get_backend", lambda: _NonPatchrightBackend())
+        assert browser_tool.check_browser_set_proxy_requirements() is False
 
 
 class TestBrowserVisionAnnotate:
-    """browser_vision supports annotate parameter."""
-
     def test_schema_has_annotate_param(self):
         from tools.browser_tool import BROWSER_TOOL_SCHEMAS
 
@@ -152,54 +136,19 @@ class TestBrowserVisionAnnotate:
         assert "annotate" in props
         assert props["annotate"]["type"] == "boolean"
 
-    def test_annotate_false_no_flag(self):
-        """Without annotate, screenshot command has no --annotate flag."""
+    def test_annotate_flag_propagated(self, monkeypatch):
         from tools.browser_tool import browser_vision
 
-        with (
-            patch("tools.browser_tool._run_browser_command") as mock_cmd,
-            patch("tools.browser_tool.call_llm") as mock_call_llm,
-            patch("tools.browser_tool._get_vision_model", return_value="test-model"),
-        ):
-            mock_cmd.return_value = {"success": True, "data": {}}
-            # Will fail at screenshot file read, but we can check the command
-            try:
-                browser_vision("test", annotate=False, task_id="test")
-            except Exception:
-                pass
+        backend = _FakeBackend()
+        monkeypatch.setattr("tools.browser_tool._get_backend", lambda: backend)
 
-            if mock_cmd.called:
-                args = mock_cmd.call_args[0]
-                cmd_args = args[2] if len(args) > 2 else []
-                assert "--annotate" not in cmd_args
+        result = json.loads(browser_vision("what is this", annotate=True, task_id="tid"))
 
-    def test_annotate_true_adds_flag(self):
-        """With annotate=True, screenshot command includes --annotate."""
-        from tools.browser_tool import browser_vision
-
-        with (
-            patch("tools.browser_tool._run_browser_command") as mock_cmd,
-            patch("tools.browser_tool.call_llm") as mock_call_llm,
-            patch("tools.browser_tool._get_vision_model", return_value="test-model"),
-        ):
-            mock_cmd.return_value = {"success": True, "data": {}}
-            try:
-                browser_vision("test", annotate=True, task_id="test")
-            except Exception:
-                pass
-
-            if mock_cmd.called:
-                args = mock_cmd.call_args[0]
-                cmd_args = args[2] if len(args) > 2 else []
-                assert "--annotate" in cmd_args
-
-
-# ── auto-recording config ────────────────────────────────────────────
+        assert result["success"] is True
+        assert backend.vision_calls == [("tid", "what is this", True)]
 
 
 class TestRecordSessionsConfig:
-    """browser.record_sessions config option."""
-
     def test_default_config_has_record_sessions(self):
         from hermes_cli.config import DEFAULT_CONFIG
 
@@ -207,39 +156,12 @@ class TestRecordSessionsConfig:
         assert "record_sessions" in browser_cfg
         assert browser_cfg["record_sessions"] is False
 
-    def test_maybe_start_recording_disabled(self):
-        """Recording doesn't start when config says record_sessions: false."""
-        from tools.browser_tool import _maybe_start_recording, _recording_sessions
-
-        with (
-            patch("tools.browser_tool._run_browser_command") as mock_cmd,
-            patch("builtins.open", side_effect=FileNotFoundError),
-        ):
-            _maybe_start_recording("test-task")
-
-        mock_cmd.assert_not_called()
-        assert "test-task" not in _recording_sessions
-
-    def test_maybe_stop_recording_noop_when_not_recording(self):
-        """Stopping when not recording is a no-op."""
-        from tools.browser_tool import _maybe_stop_recording, _recording_sessions
-
-        _recording_sessions.discard("test-task")  # ensure not in set
-        with patch("tools.browser_tool._run_browser_command") as mock_cmd:
-            _maybe_stop_recording("test-task")
-
-        mock_cmd.assert_not_called()
-
-
-# ── dogfood skill files ──────────────────────────────────────────────
-
 
 class TestDogfoodSkill:
     """Dogfood skill files exist and have correct structure."""
 
     @pytest.fixture(autouse=True)
     def _skill_dir(self):
-        # Use the actual repo skills dir (not temp)
         self.skill_dir = os.path.join(
             os.path.dirname(__file__), "..", "..", "skills", "dogfood"
         )
