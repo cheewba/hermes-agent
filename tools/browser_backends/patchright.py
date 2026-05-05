@@ -14,6 +14,20 @@ import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+import concurrent.futures
+import functools
+import threading
+
+def _run_in_pw_thread(func):
+    @functools.wraps(func)
+    def wrapper(self, *args, **kwargs):
+        if not hasattr(self, '_executor'):
+            self._executor = concurrent.futures.ThreadPoolExecutor(max_workers=1, thread_name_prefix="PWThread")
+        if threading.current_thread().name.startswith("PWThread"):
+            return func(self, *args, **kwargs)
+        return self._executor.submit(func, self, *args, **kwargs).result()
+    return wrapper
+
 from urllib.parse import unquote, urlsplit
 
 from agent.auxiliary_client import call_llm
@@ -125,6 +139,7 @@ class PatchrightBackend(BrowserBackend):
             raise RuntimeError("Runtime proxy overrides are not supported in patchright CDP mode")
         _set_patchright_proxy_override(task_id, proxy)
 
+    @_run_in_pw_thread
     def init_session(self, task_id: str) -> BrowserSessionState:
         task_id = task_id or "default"
 
@@ -225,6 +240,7 @@ class PatchrightBackend(BrowserBackend):
     def list_sessions(self) -> list[BrowserSessionState]:
         return list(self._sessions.values())
 
+    @_run_in_pw_thread
     def close_session(self, task_id: str) -> bool:
         task_id = task_id or "default"
         # Runtime proxy overrides are session-scoped; clear on close so a new
@@ -238,12 +254,14 @@ class PatchrightBackend(BrowserBackend):
         _safe_close_patchright_state(state)
         return True
 
+    @_run_in_pw_thread
     def emergency_cleanup(self, task_id: str) -> None:
         try:
             self.close_session(task_id)
         except Exception:
             logger.debug("Patchright emergency cleanup failed for %s", task_id, exc_info=True)
 
+    @_run_in_pw_thread
     def navigate(self, task_id: str, url: str) -> dict[str, Any]:
         session = self._get_runtime(task_id)
         if isinstance(session, dict):
@@ -263,6 +281,7 @@ class PatchrightBackend(BrowserBackend):
         except Exception as exc:
             return {"success": False, "error": f"Navigation failed: {exc}"}
 
+    @_run_in_pw_thread
     def snapshot(self, task_id: str, full: bool = False) -> dict[str, Any]:
         session = self._get_runtime(task_id)
         if isinstance(session, dict):
@@ -332,6 +351,7 @@ class PatchrightBackend(BrowserBackend):
         except Exception as exc:
             return {"success": False, "error": f"Failed to get snapshot: {exc}"}
 
+    @_run_in_pw_thread
     def click(self, task_id: str, ref: str) -> dict[str, Any]:
         session = self._get_runtime(task_id)
         if isinstance(session, dict):
@@ -354,6 +374,7 @@ class PatchrightBackend(BrowserBackend):
         except Exception as exc:
             return {"success": False, "error": f"Failed to click {target.ref}: {exc}"}
 
+    @_run_in_pw_thread
     def type(self, task_id: str, ref: str, text: str) -> dict[str, Any]:
         session = self._get_runtime(task_id)
         if isinstance(session, dict):
@@ -376,6 +397,7 @@ class PatchrightBackend(BrowserBackend):
         except Exception as exc:
             return {"success": False, "error": f"Failed to type into {target.ref}: {exc}"}
 
+    @_run_in_pw_thread
     def scroll(self, task_id: str, direction: str) -> dict[str, Any]:
         session = self._get_runtime(task_id)
         if isinstance(session, dict):
@@ -389,6 +411,7 @@ class PatchrightBackend(BrowserBackend):
         except Exception as exc:
             return {"success": False, "error": f"Failed to scroll {direction}: {exc}"}
 
+    @_run_in_pw_thread
     def press(self, task_id: str, key: str) -> dict[str, Any]:
         session = self._get_runtime(task_id)
         if isinstance(session, dict):
@@ -401,6 +424,7 @@ class PatchrightBackend(BrowserBackend):
         except Exception as exc:
             return {"success": False, "error": f"Failed to press {key}: {exc}"}
 
+    @_run_in_pw_thread
     def back(self, task_id: str) -> dict[str, Any]:
         session = self._get_runtime(task_id)
         if isinstance(session, dict):
@@ -421,6 +445,7 @@ class PatchrightBackend(BrowserBackend):
         self._sessions.touch(task_id)
         return {"success": True, "url": current_url}
 
+    @_run_in_pw_thread
     def get_images(self, task_id: str) -> dict[str, Any]:
         session = self._get_runtime(task_id)
         if isinstance(session, dict):
@@ -457,6 +482,7 @@ class PatchrightBackend(BrowserBackend):
         except Exception as exc:
             return {"success": False, "error": f"Failed to get images: {exc}"}
 
+    @_run_in_pw_thread
     def vision(self, task_id: str, question: str, annotate: bool = False) -> dict[str, Any]:
         session = self._get_runtime(task_id)
         if isinstance(session, dict):
@@ -532,6 +558,7 @@ class PatchrightBackend(BrowserBackend):
         finally:
             _remove_annotation_overlays(session, annotation_ids)
 
+    @_run_in_pw_thread
     def console(self, task_id: str, clear: bool = False) -> dict[str, Any]:
         session = self._get_runtime(task_id)
         if isinstance(session, dict):
