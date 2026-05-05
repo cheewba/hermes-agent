@@ -675,6 +675,7 @@ def _resolve_patchright_proxy(cfg: dict[str, Any]) -> dict[str, Any] | None:
 
     server = str(proxy_cfg.get("server") or "").strip()
     if server:
+        # If the server is provided, enforce http:// as the default scheme.
         resolved["server"] = server if "://" in server else f"http://{server}"
 
     username = proxy_cfg.get("username")
