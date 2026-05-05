@@ -180,8 +180,18 @@ class PatchrightBackend(BrowserBackend):
                 user_data_dir = tempfile.mkdtemp(prefix=f"session_{task_id[:16]}_", dir=str(user_data_base))
 
                 launch_kwargs: dict[str, Any] = {
-                    "headless": bool(cfg.get("headless", True)),
+                        "headless": bool(cfg.get("headless", True)),
                 }
+                
+                # 2Captcha Extension Injection
+                ext_dir = get_hermes_home() / "cache" / "2captcha_ext"
+                if ext_dir.exists():
+                        ext_dir_str = str(ext_dir)
+                        launch_kwargs["args"] = [
+                            f"--disable-extensions-except={ext_dir_str}",
+                            f"--load-extension={ext_dir_str}"
+                        ]
+
                 channel = cfg.get("channel")
                 if channel:
                     launch_kwargs["channel"] = channel
@@ -578,6 +588,29 @@ class PatchrightBackend(BrowserBackend):
             "total_messages": len(messages),
             "total_errors": len(errors),
         }
+
+
+    @_run_in_pw_thread
+    def solve_cloudflare(self, task_id: str, max_wait_seconds: int = 120) -> dict[str, Any]:
+        session = self._get_runtime(task_id)
+        if isinstance(session, dict):
+            return session
+            
+        try:
+            button = session.page.locator("text='Solve with 2Captcha'").first
+            if button.count() > 0:
+                button.click()
+                try:
+                    session.page.wait_for_function('document.title !== "Just a moment..."', timeout=max_wait_seconds * 1000)
+                    session.current_url = session.page.url
+                    self._sessions.touch(task_id)
+                    return {"success": True, "solved": True, "url": session.page.url, "title": session.page.title()}
+                except Exception as e:
+                    return {"success": False, "error": f"Timeout waiting for 2captcha to solve: {e}"}
+            else:
+                return {"success": False, "error": "2captcha 'Solve' button not found on the page. Ensure the extension is loaded and API key is set."}
+        except Exception as exc:
+            return {"success": False, "error": f"Failed to solve Cloudflare: {exc}"}
 
     def _get_runtime(self, task_id: str) -> PatchrightRuntimeSession | dict[str, Any]:
         task_id = task_id or "default"

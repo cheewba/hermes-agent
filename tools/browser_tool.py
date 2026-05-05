@@ -116,6 +116,36 @@ BROWSER_TOOL_SCHEMAS = [
         },
     },
     {
+        "name": "browser_solve_cloudflare",
+        "description": "Attempt to solve a Cloudflare Turnstile or Managed Challenge on the current page using the 2captcha extension. This helper is only available with the patchright backend and requires a valid 2captcha API key in config. Best-effort only.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "max_wait_seconds": {
+                    "type": "integer",
+                    "description": "Maximum seconds to wait for challenge completion before timing out.",
+                    "default": 120,
+                }
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "browser_solve_hcaptcha",
+        "description": "Attempt to solve an hCaptcha challenge on the current page using hcaptcha-challenger. This helper is only available with the patchright backend and requires the Python package 'hcaptcha-challenger' plus a configured GEMINI_API_KEY. Best-effort only; some challenges may still fail.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "max_wait_seconds": {
+                    "type": "integer",
+                    "description": "Maximum seconds to wait for challenge completion before timing out.",
+                    "default": 120,
+                }
+            },
+            "required": [],
+        },
+    },
+    {
         "name": "browser_snapshot",
         "description": "Get a text-based snapshot of the current page's accessibility tree. Returns interactive elements with ref IDs (like @e1, @e2) for browser_click and browser_type. full=false (default): compact view with interactive elements. full=true: complete page content. Snapshots over 8000 chars are truncated or LLM-summarized. Requires browser_navigate first.",
         "parameters": {
@@ -522,6 +552,57 @@ def browser_set_proxy(
     )
 
 
+def browser_solve_cloudflare(max_wait_seconds: int = 120, task_id: Optional[str] = None) -> str:
+    backend = _get_backend()
+    if not hasattr(backend, "solve_cloudflare"):
+        return json.dumps(
+            {
+                "success": False,
+                "error": f"The browser_solve_cloudflare tool is not supported by backend '{backend.backend_name()}'.",
+            },
+            ensure_ascii=False,
+        )
+
+    task = _effective_task_id(task_id)
+    _start_browser_cleanup_thread()
+    
+    result = backend.solve_cloudflare(task, max_wait_seconds=max_wait_seconds)
+    return json.dumps(result, ensure_ascii=False)
+
+def browser_solve_hcaptcha(max_wait_seconds: int = 120, task_id: Optional[str] = None) -> str:
+    backend = _get_backend()
+    task = _effective_task_id(task_id)
+
+    if not isinstance(backend, PatchrightBackend):
+        return json.dumps(
+            {
+                "success": False,
+                "error": "hCaptcha solver is currently supported only by the patchright browser backend.",
+            },
+            ensure_ascii=False,
+        )
+
+    if not backend.supports_hcaptcha_challenger():
+        return json.dumps(
+            {
+                "success": False,
+                "error": (
+                    "hcaptcha-challenger support is unavailable. Install Python package "
+                    "'hcaptcha-challenger' and configure GEMINI_API_KEY, then retry."
+                ),
+            },
+            ensure_ascii=False,
+        )
+
+    timeout = max(10, int(max_wait_seconds or 120))
+    result = _normalize_result(
+        backend.solve_hcaptcha(task, max_wait_seconds=timeout),
+        "hCaptcha solve failed",
+    )
+
+    return json.dumps(result, ensure_ascii=False)
+
+
 def browser_snapshot(
     full: bool = False,
     task_id: Optional[str] = None,
@@ -710,6 +791,18 @@ def check_browser_set_proxy_requirements() -> bool:
     return backend.is_configured()
 
 
+def check_browser_solve_hcaptcha_requirements() -> bool:
+    try:
+        backend = _get_backend()
+    except Exception:
+        return False
+
+    if not isinstance(backend, PatchrightBackend):
+        return False
+
+    return backend.is_configured() and backend.supports_hcaptcha_challenger()
+
+
 # ---------------------------------------------------------------------------
 # Compatibility wrappers retained for testability and external imports.
 # These are thin delegates to AgentBrowserBackend helpers.
@@ -833,6 +926,28 @@ registry.register(
     ),
     check_fn=check_browser_set_proxy_requirements,
     emoji="🛡️",
+)
+registry.register(
+    name="browser_solve_cloudflare",
+    toolset="browser",
+    schema=next(s for s in BROWSER_TOOL_SCHEMAS if s["name"] == "browser_solve_cloudflare"),
+    handler=lambda args, **kwargs: browser_solve_cloudflare(
+        max_wait_seconds=args.get("max_wait_seconds", 120),
+        task_id=kwargs.get("task_id"),
+    ),
+    check_fn=check_browser_solve_hcaptcha_requirements,
+)
+
+registry.register(
+    name="browser_solve_hcaptcha",
+    toolset="browser",
+    schema=_BROWSER_SCHEMA_MAP["browser_solve_hcaptcha"],
+    handler=lambda args, **kw: browser_solve_hcaptcha(
+        max_wait_seconds=args.get("max_wait_seconds", 120),
+        task_id=kw.get("task_id"),
+    ),
+    check_fn=check_browser_solve_hcaptcha_requirements,
+    emoji="🧩",
 )
 registry.register(
     name="browser_snapshot",
