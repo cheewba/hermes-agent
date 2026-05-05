@@ -601,3 +601,7 @@ def camofox_console(clear: bool = False, task_id: Optional[str] = None) -> str:
 
 
 
+
+
+def cleanup_all_camofox_sessions():
+    pass

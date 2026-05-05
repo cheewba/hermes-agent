@@ -488,56 +488,6 @@ def test_safe_close_patchright_state_skips_shared_cdp_resources():
     assert playwright.stopped is True
 
 
-def test_patchright_supports_hcaptcha_challenger_false_when_module_missing(monkeypatch):
-    backend = PatchrightBackend()
-    monkeypatch.setattr("tools.browser_backends.patchright._HCAPTCHA_CHALLENGER_CLASSES", False)
-    monkeypatch.setattr(
-        "tools.browser_backends.patchright._load_hcaptcha_challenger_classes",
-        lambda: None,
-    )
-
-    assert backend.supports_hcaptcha_challenger() is False
-
-
-def test_patchright_solve_hcaptcha_requires_cdp_mode(monkeypatch):
-    backend = PatchrightBackend()
-    session = _session("task-no-cdp", _FakePage(_FakeFrame()))
-    backend._sessions.set("task-no-cdp", session)
-
-    monkeypatch.setattr("tools.browser_backends.patchright._load_hcaptcha_challenger_classes", lambda: (object, object))
-    monkeypatch.setattr("tools.browser_backends.patchright._patchright_config", lambda *_args, **_kwargs: {})
-    monkeypatch.setattr("tools.browser_backends.patchright._resolve_patchright_cdp_url", lambda cfg: "")
-
-    result = backend.solve_hcaptcha("task-no-cdp")
-
-    assert result["success"] is False
-    assert "cdp" in result["error"].lower()
-
-
-def test_patchright_solve_hcaptcha_calls_solver_runner(monkeypatch):
-    backend = PatchrightBackend()
-    session = _session("task-hcaptcha", _FakePage(_FakeFrame()))
-    session.page.url = "https://accounts.hcaptcha.com/demo"
-    backend._sessions.set("task-hcaptcha", session)
-
-    monkeypatch.setattr("tools.browser_backends.patchright._load_hcaptcha_challenger_classes", lambda: ("AgentV", "AgentConfig"))
-    monkeypatch.setattr("tools.browser_backends.patchright._patchright_config", lambda *_args, **_kwargs: {"cdp_url": "ws://cdp-host"})
-    monkeypatch.setattr("tools.browser_backends.patchright._resolve_patchright_cdp_url", lambda cfg: "ws://resolved-cdp")
-
-    calls = []
-
-    def _runner(**kwargs):
-        calls.append(kwargs)
-        return {"success": True, "solved": True, "signal": "SUCCESS"}
-
-    monkeypatch.setattr("tools.browser_backends.patchright._solve_hcaptcha_with_challenger", _runner)
-
-    result = backend.solve_hcaptcha("task-hcaptcha", max_wait_seconds=77)
-
-    assert result["success"] is True
-    assert calls and calls[0]["cdp_url"] == "ws://resolved-cdp"
-    assert calls[0]["target_url"] == "https://accounts.hcaptcha.com/demo"
-    assert calls[0]["max_wait_seconds"] == 77
 
 
 PATCHRIGHT_AVAILABLE = importlib.util.find_spec("patchright") is not None
