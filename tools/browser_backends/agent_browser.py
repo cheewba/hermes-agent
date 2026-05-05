@@ -428,6 +428,10 @@ class AgentBrowserBackend(BrowserBackend):
                 out["note"] = "Screenshot was captured but vision analysis failed. You can still share it via MEDIA:<path>."
             return out
 
+
+    def solve_cloudflare(self, task_id: str, max_wait_seconds: int = 120) -> dict[str, Any]:
+        return {"success": False, "error": "Not supported on this backend"}
+
     def console(self, task_id: str, clear: bool = False) -> dict[str, Any]:
         args = ["--clear"] if clear else []
         console_result = self._run_agent_command(task_id, "console", args)
@@ -892,5 +896,4 @@ def _cleanup_old_recordings(max_age_hours: int = 72) -> None:
     except Exception:
         pass
 
-    def solve_cloudflare(self, task_id: str, max_wait_seconds: int = 120) -> dict[str, Any]:
-        return {"success": False, "error": "Not supported on this backend"}
+

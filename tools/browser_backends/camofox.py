@@ -126,6 +126,10 @@ class CamofoxBackend(BrowserBackend):
         self._touch(task_id)
         return result
 
+
+    def solve_cloudflare(self, task_id: str, max_wait_seconds: int = 120) -> dict[str, Any]:
+        return {"success": False, "error": "Not supported on this backend"}
+
     def console(self, task_id: str, clear: bool = False) -> dict[str, Any]:
         self.init_session(task_id)
         result = _decode(camofox_console(clear, task_id))

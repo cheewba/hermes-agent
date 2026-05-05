@@ -1,0 +1,365 @@
+{
+  "success": true,
+  "action": "full_scan",
+  "target": "BTC",
+  "captured_data": {
+    "https://api.arkm.com/intelligence/search?query=BTC": {
+      "arkhamEntities": [
+        {
+          "name": "BtcTurk",
+          "note": "",
+          "id": "btcturk",
+          "type": "cex",
+          "service": true,
+          "addresses": null,
+          "twitter": "btcturk"
+        },
+        {
+          "name": "BTC Markets",
+          "note": "",
+          "id": "btc-markets",
+          "type": "cex",
+          "service": true,
+          "addresses": null,
+          "twitter": "BTCMarkets"
+        },
+        {
+          "name": "BTC-e",
+          "note": "",
+          "id": "btc-e",
+          "type": "cex",
+          "service": true,
+          "addresses": null,
+          "twitter": "btcecom"
+        },
+        {
+          "name": "BTC.com",
+          "note": "",
+          "id": "btc-com",
+          "type": "miner-validator",
+          "service": false,
+          "addresses": null,
+          "twitter": "btccom_official"
+        },
+        {
+          "name": "BTCC",
+          "note": "",
+          "id": "btcc",
+          "type": "cex",
+          "service": true,
+          "addresses": null,
+          "twitter": "yourbtcc"
+        }
+      ],
+      "arkhamAddresses": [
+        {
+          "address": "18gSAdDXKRatd8aGFBpBotchCq1gBQw9Jm",
+          "chain": "bitcoin",
+          "arkhamEntity": {
+            "name": "BTC-e",
+            "note": "",
+            "id": "btc-e",
+            "type": null,
+            "service": null,
+            "addresses": null
+          },
+          "isUserAddress": false
+        },
+        {
+          "address": "1CbR8da9YPZqXJJKm9ze1GYf67eKAUfXwP",
+          "chain": "bitcoin",
+          "arkhamEntity": {
+            "name": "BTC-e",
+            "note": "",
+            "id": "btc-e",
+            "type": null,
+            "service": null,
+            "addresses": null
+          },
+          "isUserAddress": false
+        },
+        {
+          "address": "3LaJ3tTafhUET4ZndcD1tiM2mZ6ViPV55r",
+          "chain": "bitcoin",
+          "arkhamEntity": {
+            "name": "BTC2PM",
+            "note": "",
+            "id": "btc2pm",
+            "type": null,
+            "service": null,
+            "addresses": null
+          },
+          "isUserAddress": false
+        },
+        {
+          "address": "0x2eE555C9006A9DC4674f01E0d4Dfc58e013708f0",
+          "chain": "ethereum",
+          "arkhamEntity": {
+            "name": "BtcTurk",
+            "note": "",
+            "id": "btcturk",
+            "type": null,
+            "service": null,
+            "addresses": null
+          },
+          "isUserAddress": false
+        },
+        {
+          "address": "12MQHWqF33Ji9rGEedCJmv4CkPNeAubHoJ",
+          "chain": "bitcoin",
+          "arkhamEntity": {
+            "name": "BtcTrade",
+            "note": "",
+            "id": "btc-trade",
+            "type": null,
+            "service": null,
+            "addresses": null
+          },
+          "isUserAddress": false
+        }
+      ],
+      "ens": [
+        {
+          "name": "btc588\u200c.eth",
+          "address": "0xEbCD54d901596cE65fa504D96A397E8463d6262d"
+        },
+        {
+          "name": "btcfierce.eth",
+          "address": "0xB9d9659c669Fa1cd142200a4c134C38e90D6dE4e"
+        },
+        {
+          "name": "\u200d\u200dbtc.eth",
+          "address": "0xBA285C02e75755CdC9934DbbC45Ea17C5aD65385"
+        },
+        {
+          "name": "btc1.eth",
+          "address": "0x90FF89C637Fd1537E151B8ced1d1D0Cb94e31cA6"
+        },
+        {
+          "name": "btc0.eth",
+          "address": "0xbD18493B34eEa4B491072584AB532Fe55678b36C"
+        }
+      ],
+      "types": [
+        "otc",
+        "otc",
+        "otc",
+        "otc"
+      ],
+      "services": [
+        {
+          "name": "BTCC",
+          "note": "",
+          "id": "btcc",
+          "type": "cex",
+          "service": true,
+          "addresses": null,
+          "twitter": "yourbtcc"
+        },
+        {
+          "name": "BTCEX",
+          "note": "",
+          "id": "btcex",
+          "type": "cex",
+          "service": true,
+          "addresses": null,
+          "twitter": "BTCEX_exchange"
+        },
+        {
+          "name": "BTC-e",
+          "note": "",
+          "id": "btc-e",
+          "type": "cex",
+          "service": true,
+          "addresses": null,
+          "twitter": "btcecom"
+        },
+        {
+          "name": "BtcTurk",
+          "note": "",
+          "id": "btcturk",
+          "type": "cex",
+          "service": true,
+          "addresses": null,
+          "twitter": "btcturk"
+        },
+        {
+          "name": "BtcTrade",
+          "note": "",
+          "id": "btc-trade",
+          "type": "cex",
+          "service": true,
+          "addresses": null
+        }
+      ],
+      "twitter": [
+        {
+          "name": "BtcTurk",
+          "note": "",
+          "id": "btcturk",
+          "type": "cex",
+          "service": true,
+          "addresses": null,
+          "twitter": "btcturk"
+        },
+        {
+          "name": "BTC-e",
+          "note": "",
+          "id": "btc-e",
+          "type": "cex",
+          "service": true,
+          "addresses": null,
+          "twitter": "btcecom"
+        },
+        {
+          "name": "Bitcoin Standard Hashrate Token",
+          "note": "",
+          "id": "bitcoin-standard-hashrate",
+          "type": "misc",
+          "service": false,
+          "addresses": null,
+          "twitter": "BTCST2020"
+        },
+        {
+          "name": "@BTCwolf",
+          "note": "",
+          "id": "btcwolf",
+          "type": "individual",
+          "service": false,
+          "addresses": null,
+          "twitter": "BTCwolf"
+        },
+        {
+          "name": "BTC-Alpha Exchange",
+          "note": "",
+          "id": "btc-alpha-exchange",
+          "type": "cex",
+          "service": true,
+          "addresses": null,
+          "twitter": "btcalpha"
+        }
+      ],
+      "opensea": [
+        {
+          "address": "0xEbCD54d901596cE65fa504D96A397E8463d6262d",
+          "username": "btc588",
+          "profileImage": "https://storage.googleapis.com/opensea-static/opensea-profile/29.png"
+        },
+        {
+          "address": "0x8000Bc928F61Bf855579b14b196fa17E94873722",
+          "username": "btc19000",
+          "profileImage": "https://storage.googleapis.com/opensea-static/opensea-profile/9.png"
+        },
+        {
+          "address": "0x6761BcAF2b2156C058634D9772F07374D6eDeF1d",
+          "username": "btc1",
+          "profileImage": "https://storage.googleapis.com/opensea-static/opensea-profile/3.png"
+        },
+        {
+          "address": "0xF4a587311aAd1F2d6B0A86bD41566345b371534d",
+          "username": "Btchy",
+          "profileImage": "https://storage.googleapis.com/opensea-static/opensea-profile/19.png"
+        },
+        {
+          "address": "0x92db1A82dC9Cc4A3D4E3df5246C8853114928bba",
+          "username": "btcow",
+          "profileImage": "https://i.seadn.io/gae/YLTJuB5srB5sHN3tAEwOd7maKEri9xZmg85bYxiVu4gmA-fyFNESLhvZ4tP5kGDZTpe0c1xt61k9kFUhnbZVr0UJC7d5OZpaZS9BqQ?w=500&auto=format"
+        }
+      ],
+      "tokens": [
+        {
+          "identifier": {
+            "pricingID": "bitcoin"
+          },
+          "name": "Bitcoin",
+          "symbol": "btc",
+          "price": 81298,
+          "price24hAgo": 78715,
+          "deployments": [
+            {
+              "chain": "bitcoin",
+              "address": ""
+            }
+          ]
+        },
+        {
+          "identifier": {
+            "pricingID": "blackrocktradingcurrency"
+          },
+          "name": "BlackrockTradingCurrency",
+          "symbol": "btc",
+          "price": 0.00093151,
+          "price24hAgo": 0.00093151,
+          "deployments": [
+            {
+              "chain": "ethereum",
+              "address": "0xbD6323A83b613F668687014E8A5852079494fB68"
+            }
+          ]
+        }
+      ],
+      "pools": [
+        {
+          "poolAddress": "B18jGQS1TELZnvUpquu3yZYataB6VJJL52z73pHcN2FS",
+          "tokenAddress": "EtBc6gkCvsB9c6f5wSbwG8wPjRqXMB5euptK6bqG1R4X",
+          "pricingID": "batcat",
+          "tokenName": "batcat",
+          "tokenSymbol": "btc",
+          "priceUsd": 1.343e-05,
+          "marketCapUsd": 0,
+          "liquidityUsd": 0,
+          "volume1h": 0,
+          "programAddress": "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8"
+        },
+        {
+          "poolAddress": "EynXrupWn5cAfWbkQVt2dhABRYhXJEZMaWdmhJA8NoES",
+          "tokenAddress": "2XYgocKz9MvkNVVyj85kdM2VxsUwrJeQUZVD4qmD4dYT",
+          "pricingID": "bobby-the-cat",
+          "tokenName": "Bobby The Cat",
+          "tokenSymbol": "btc",
+          "priceUsd": 4.86e-06,
+          "marketCapUsd": 0,
+          "liquidityUsd": 0,
+          "volume1h": 0,
+          "programAddress": "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA"
+        },
+        {
+          "poolAddress": "DZmG9je9GBZG4YNc8bu6C6gidyC9hPfRtyyCPerUPN2d",
+          "tokenAddress": "BoBBYtpE2kpAJwh5TPPky72KND2cWmtdYa63bqo2yiKs",
+          "pricingID": "bobby-the-cat-2",
+          "tokenName": "Bobby The Cat",
+          "tokenSymbol": "btc",
+          "priceUsd": 1.16e-06,
+          "marketCapUsd": 0,
+          "liquidityUsd": 0,
+          "volume1h": 0,
+          "programAddress": "CPMMoo8L3F4NbTegBCKVNunggL7H1ZpdTHKxQB5qKP1C"
+        },
+        {
+          "poolAddress": "Ao4xjYwfNYQeUKq6Bxf6odwUzLh31DUVQQbnF7zRxy29",
+          "tokenAddress": "3XFiHA2gexzBjqtM5Z7FjJhP6f28D2m79UihBCfkpump",
+          "pricingID": "bitcat-2",
+          "tokenName": "BitCat",
+          "tokenSymbol": "btcat",
+          "priceUsd": 1.296e-05,
+          "marketCapUsd": 0,
+          "liquidityUsd": 0,
+          "volume1h": 0,
+          "programAddress": "Eo7WjKq67rjJQSZxS6z3YkapzY3eMj6Xy8X5EQVn5UaB"
+        },
+        {
+          "poolAddress": "9gkuSR4VaF8kioKkz5rXTjohHPhyAJbde4cA89uwWkCS",
+          "tokenAddress": "6xbPNG5m1PPJh8ts9B9zxeqgjkjkgdbxxJp8gJqpsEFK",
+          "pricingID": "btc25",
+          "tokenName": "$BTC25",
+          "tokenSymbol": "$btc25",
+          "priceUsd": 1.433e-05,
+          "marketCapUsd": 0,
+          "liquidityUsd": 0,
+          "volume1h": 0,
+          "programAddress": "Eo7WjKq67rjJQSZxS6z3YkapzY3eMj6Xy8X5EQVn5UaB"
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,11 @@
+How to Scrape with Patchright and Avoid Detection - ZenRows
+<!DOCTYPE html><html lang="en"><head>
+    <meta charset="utf-8">
+    <title>How to Scrape with Patchright and Avoid Detection - ZenRows</title>    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <meta name="csrf-token" content="">
+    <meta name="robots" content="index,follow">
+    <meta name="description" content="Are you scraping with Playwright but getting blocked? Learn how Patchright can help you navigate anti-scraping measures, including the best solution.">    <meta property="og:title" content="How to Scrape with Patchright and Avoid Detection - ZenRows">    <link rel="preload" href="https://cdn.zenrows.com/css/public.484445fe.css" as="style">
+    <link rel="preload" href="https://cdn.zenrows.com/js/manifest.8919c435.js" as="script">
+    <link rel="preload" href="https://cdn.zenrows.com/js/vendor.39b68dbb.js" as="script">
+    <link rel="preload" href="https://cdn.zenrows.com/js/public.2c4f0a36.js" as="script">
+    <link rel="preconnect"
