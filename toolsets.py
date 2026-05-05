@@ -46,7 +46,7 @@ _HERMES_CORE_TOOLS = [
         "browser_solve_hcaptcha", "browser_snapshot", "browser_click",
     "browser_type", "browser_scroll", "browser_back",
     "browser_press", "browser_close", "browser_get_images",
-    "browser_vision", "browser_console",
+    "browser_vision", "browser_console", "arkham_analyze",
     # Text-to-speech
     "text_to_speech",
     # Planning & memory
@@ -121,7 +121,7 @@ TOOLSETS = {
         "browser_solve_hcaptcha", "browser_snapshot", "browser_click",
             "browser_type", "browser_scroll", "browser_back",
             "browser_press", "browser_close", "browser_get_images",
-            "browser_vision", "browser_console", "web_search"
+            "browser_vision", "browser_console", "arkham_analyze", "web_search"
         ],
         "includes": []
     },
@@ -244,7 +244,7 @@ TOOLSETS = {
         "browser_solve_hcaptcha", "browser_snapshot", "browser_click",
             "browser_type", "browser_scroll", "browser_back",
             "browser_press", "browser_close", "browser_get_images",
-            "browser_vision", "browser_console",
+            "browser_vision", "browser_console", "arkham_analyze",
             "todo", "memory",
             "session_search",
             "execute_code", "delegate_task",
@@ -272,7 +272,7 @@ TOOLSETS = {
         "browser_solve_hcaptcha", "browser_snapshot", "browser_click",
             "browser_type", "browser_scroll", "browser_back",
             "browser_press", "browser_close", "browser_get_images",
-            "browser_vision", "browser_console",
+            "browser_vision", "browser_console", "arkham_analyze",
             # Planning & memory
             "todo", "memory",
             # Session history search

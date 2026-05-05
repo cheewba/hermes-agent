@@ -260,3 +260,5 @@ __all__ = [
     'DELEGATE_TASK_SCHEMA',
 ]
 
+
+from .arkham_tool import arkham_analyze
