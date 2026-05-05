@@ -154,3 +154,6 @@ def _decode(payload: str) -> dict[str, Any]:
     except Exception:
         logger.debug("Invalid JSON from camofox backend", exc_info=True)
     return {"success": False, "error": "Invalid response from camofox backend"}
+
+    def solve_cloudflare(self, task_id: str, max_wait_seconds: int = 120) -> dict[str, Any]:
+        return {"success": False, "error": "Not supported on this backend"}

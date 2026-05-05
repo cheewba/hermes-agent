@@ -109,3 +109,7 @@ class BrowserBackend(ABC):
     @abstractmethod
     def console(self, task_id: str, clear: bool = False) -> dict[str, Any]:
         pass
+
+    @abstractmethod
+    def solve_cloudflare(self, task_id: str, max_wait_seconds: int = 120) -> dict[str, Any]:
+        pass

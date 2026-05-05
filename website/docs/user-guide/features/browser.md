@@ -180,6 +180,7 @@ Behavior:
 - If no CDP URL is provided, Patchright launches its own local Chrome/Chromium instance.
 - `executable_path` lets you pick a specific Chrome/Chromium binary for local launch mode.
 - `xvfb.enabled: true` auto-starts Xvfb when no `DISPLAY` is available (or always when `force: true`).
+- `browser_solve_hcaptcha` is available only on Patchright when `hcaptcha-challenger` is installed; currently it requires CDP mode (`browser.patchright.cdp_url` / `BROWSER_CDP_URL`) and a valid `GEMINI_API_KEY`.
 
 Example (headful Linux server with explicit Chrome binary):
 

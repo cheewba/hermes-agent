@@ -891,3 +891,6 @@ def _cleanup_old_recordings(max_age_hours: int = 72) -> None:
                 pass
     except Exception:
         pass
+
+    def solve_cloudflare(self, task_id: str, max_wait_seconds: int = 120) -> dict[str, Any]:
+        return {"success": False, "error": "Not supported on this backend"}
