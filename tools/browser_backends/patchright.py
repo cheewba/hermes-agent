@@ -224,12 +224,8 @@ class PatchrightBackend(BrowserBackend):
 
                 context = playwright.chromium.launch_persistent_context(user_data_dir=user_data_dir, **launch_kwargs)
 
-                if fingerprint:
-                    try:
-                        from browserforge.injectors.utils import InjectFunction
-                        context.add_init_script(InjectFunction(fingerprint))
-                    except Exception as e:
-                        logger.warning(f"Failed to inject Browserforge fingerprint scripts: {e}")
+                # Intentionally not calling context.add_init_script(InjectFunction(fingerprint))
+                # as it is known to cause ERR_TUNNEL_CONNECTION_FAILED with authenticated proxies in Playwright.
 
             cdp_created_page = False
             if cdp_url:
