@@ -205,7 +205,31 @@ class PatchrightBackend(BrowserBackend):
                 if proxy_settings:
                     launch_kwargs["proxy"] = proxy_settings
 
+                # Browserforge integration
+                fingerprint = None
+                try:
+                    from browserforge.fingerprints import FingerprintGenerator
+                    from browserforge.injectors.utils import only_injectable_headers
+                    fingerprint = FingerprintGenerator().generate()
+                    launch_kwargs["user_agent"] = fingerprint.navigator.userAgent
+                    launch_kwargs["viewport"] = {
+                        "width": fingerprint.screen.width,
+                        "height": fingerprint.screen.height,
+                    }
+                    launch_kwargs["device_scale_factor"] = fingerprint.screen.devicePixelRatio
+                    launch_kwargs["color_scheme"] = "dark"
+                    launch_kwargs["extra_http_headers"] = only_injectable_headers(fingerprint.headers, "chromium")
+                except ImportError:
+                    pass
+
                 context = playwright.chromium.launch_persistent_context(user_data_dir=user_data_dir, **launch_kwargs)
+
+                if fingerprint:
+                    try:
+                        from browserforge.injectors.utils import InjectFunction
+                        context.add_init_script(InjectFunction(fingerprint))
+                    except Exception as e:
+                        logger.warning(f"Failed to inject Browserforge fingerprint scripts: {e}")
 
             cdp_created_page = False
             if cdp_url:

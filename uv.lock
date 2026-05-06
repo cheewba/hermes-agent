@@ -254,6 +254,15 @@ wheels = [
 ]
 
 [[package]]
+name = "apify-fingerprint-datapoints"
+version = "0.13.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/f9/f1/b74f95767581372ab849c8b13e384b62f60d034584892c60c4a3442d9312/apify_fingerprint_datapoints-0.13.0.tar.gz", hash = "sha256:263141c19e9bc90a821e6b4e2b845925f17e0b8fbd53a897fc71546bd50df7f1", size = 934827, upload-time = "2026-05-04T09:08:45.036Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/fc/58/8402442bf6af5a3a8068fe5431c42ea4f73c1eb18f621f9bf7c5de80caf5/apify_fingerprint_datapoints-0.13.0-py3-none-any.whl", hash = "sha256:0213d42297be19e8035202b41fb2e840a1e5d79874c99c882a5027a7d0b1a0eb", size = 761652, upload-time = "2026-05-04T09:08:43.347Z" },
+]
+
+[[package]]
 name = "atomicwrites"
 version = "1.4.1"
 source = { registry = "https://pypi.org/simple" }
@@ -383,6 +392,19 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/21/28/9b3f50ce0e048515135495f198351908d99540d69bfdc8c1d15b73dc55ce/blinker-1.9.0.tar.gz", hash = "sha256:b4ce2265a7abece45e7cc896e98dbebe6cead56bcf805a3d23136d145f5445bf", size = 22460, upload-time = "2024-11-08T17:25:47.436Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/10/cb/f2ad4230dc2eb1a74edf38f1a38b9b52277f75bef262d8908e60d957e13c/blinker-1.9.0-py3-none-any.whl", hash = "sha256:ba0efaa9080b619ff2f3459d1d500c57bddea4a6b424b60a91141db6fd2f08bc", size = 8458, upload-time = "2024-11-08T17:25:46.184Z" },
+]
+
+[[package]]
+name = "browserforge"
+version = "1.2.4"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "apify-fingerprint-datapoints" },
+    { name = "click" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/78/6f/8975af88d203efd70cc69477ebac702babef38201d04621c9583f2508f25/browserforge-1.2.4.tar.gz", hash = "sha256:05686473793769856ebd3528c69071f5be0e511260993e8b2ba839863711a0c4", size = 36700, upload-time = "2026-02-03T02:52:09.721Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/dd/35/ce962f738ae28ffce6293e7607b129075633e6bb185a5ab87e49246eedc2/browserforge-1.2.4-py3-none-any.whl", hash = "sha256:fb1c14e62ac09de221dcfc73074200269f697596c642cb200ceaab1127a17542", size = 37890, upload-time = "2026-02-03T02:52:08.745Z" },
 ]
 
 [[package]]
@@ -1688,6 +1710,7 @@ version = "0.6.0"
 source = { editable = "." }
 dependencies = [
     { name = "anthropic" },
+    { name = "browserforge" },
     { name = "edge-tts" },
     { name = "exa-py" },
     { name = "fal-client" },
@@ -1824,6 +1847,7 @@ requires-dist = [
     { name = "aiohttp", marker = "extra == 'sms'", specifier = ">=3.9.0,<4" },
     { name = "anthropic", specifier = ">=0.39.0,<1" },
     { name = "atroposlib", marker = "extra == 'rl'", git = "https://github.com/NousResearch/atropos.git" },
+    { name = "browserforge", specifier = ">=1.2.4" },
     { name = "croniter", marker = "extra == 'cron'", specifier = ">=6.0.0,<7" },
     { name = "daytona", marker = "extra == 'daytona'", specifier = ">=0.148.0,<1" },
     { name = "dingtalk-stream", marker = "extra == 'dingtalk'", specifier = ">=0.1.0,<1" },
