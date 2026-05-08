@@ -87,6 +87,7 @@ class PatchrightRuntimeSession(BrowserSessionState):
     screenshot_dir: str | None = None
     console_messages: list[dict[str, Any]] = field(default_factory=list)
     js_errors: list[dict[str, Any]] = field(default_factory=list)
+    last_mouse_pos: tuple[float, float] = (0.0, 0.0)
 
 
 def _load_patchright_sync_playwright():
@@ -397,7 +398,29 @@ class PatchrightBackend(BrowserBackend):
 
         try:
             locator.scroll_into_view_if_needed(timeout=_action_timeout_ms(_patchright_config()))
-            locator.click(timeout=_action_timeout_ms(_patchright_config()))
+            
+            try:
+                box = locator.bounding_box()
+                if box and box.get('width', 0) > 0 and box.get('height', 0) > 0:
+                    import random
+                    from tools.browser_backends.human_cursor import HumanizeMouseTrajectory
+                    # Target a point slightly randomized around the center of the element
+                    target_x = box['x'] + box['width'] / 2 + random.uniform(-box['width']/4, box['width']/4)
+                    target_y = box['y'] + box['height'] / 2 + random.uniform(-box['height']/4, box['height']/4)
+                    
+                    curve = HumanizeMouseTrajectory(session.last_mouse_pos, (target_x, target_y))
+                    for pt in curve.points:
+                        session.page.mouse.move(pt[0], pt[1])
+                        time.sleep(random.uniform(0.001, 0.005))
+                        
+                    session.last_mouse_pos = (target_x, target_y)
+                    locator.click(position={"x": target_x - box['x'], "y": target_y - box['y']}, timeout=_action_timeout_ms(_patchright_config()))
+                else:
+                    locator.click(timeout=_action_timeout_ms(_patchright_config()))
+            except Exception as e:
+                logger.warning(f"HumanCursor movement failed for click: {e}")
+                locator.click(timeout=_action_timeout_ms(_patchright_config()))
+            
             session.current_url = session.page.url
             self._sessions.touch(task_id)
             return {"success": True, "clicked": target.ref}
@@ -420,6 +443,31 @@ class PatchrightBackend(BrowserBackend):
 
         try:
             locator.scroll_into_view_if_needed(timeout=_action_timeout_ms(_patchright_config()))
+            
+            try:
+                box = locator.bounding_box()
+                if box and box.get('width', 0) > 0 and box.get('height', 0) > 0:
+                    import random
+                    from tools.browser_backends.human_cursor import HumanizeMouseTrajectory
+                    # Target a point slightly randomized around the center of the element
+                    target_x = box['x'] + box['width'] / 2 + random.uniform(-box['width']/4, box['width']/4)
+                    target_y = box['y'] + box['height'] / 2 + random.uniform(-box['height']/4, box['height']/4)
+                    
+                    curve = HumanizeMouseTrajectory(session.last_mouse_pos, (target_x, target_y))
+                    for pt in curve.points:
+                        session.page.mouse.move(pt[0], pt[1])
+                        time.sleep(random.uniform(0.001, 0.005))
+                        
+                    session.last_mouse_pos = (target_x, target_y)
+                    # Click to focus before typing, simulating human interaction
+                    locator.click(position={"x": target_x - box['x'], "y": target_y - box['y']}, timeout=_action_timeout_ms(_patchright_config()))
+                else:
+                    locator.click(timeout=_action_timeout_ms(_patchright_config()))
+            except Exception as e:
+                logger.warning(f"HumanCursor movement failed for type: {e}")
+            
+            # Now fill with human-like typing delays if desired, but locator.fill is fast. 
+            # We can use locator.fill directly or locator.press_sequentially.
             locator.fill(text, timeout=_action_timeout_ms(_patchright_config()))
             session.current_url = session.page.url
             self._sessions.touch(task_id)
