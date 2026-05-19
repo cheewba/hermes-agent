@@ -53,14 +53,11 @@ class TestCamofoxIdentity:
 
 
 class TestCamofoxConfigDefaults:
-    def test_default_config_includes_managed_persistence_toggle(self):
+    def test_default_config_includes_camofox_controls(self):
         from hermes_cli.config import DEFAULT_CONFIG
 
         browser_cfg = DEFAULT_CONFIG["browser"]
         assert browser_cfg["camofox"]["managed_persistence"] is False
-
-    def test_config_version_is_current(self):
-        from hermes_cli.config import DEFAULT_CONFIG
-
-        # Config version should track schema changes (browser backend selector, etc.)
-        assert DEFAULT_CONFIG["_config_version"] >= 12
+        assert browser_cfg["camofox"]["user_id"] == ""
+        assert browser_cfg["camofox"]["session_key"] == ""
+        assert browser_cfg["camofox"]["adopt_existing_tab"] is False

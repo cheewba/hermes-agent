@@ -26,7 +26,7 @@ import logging
 import os
 import shutil
 from pathlib import Path
-from hermes_constants import get_hermes_home
+from hermes_constants import get_bundled_skills_dir, get_hermes_home
 from typing import Dict, List, Tuple
 from utils import atomic_replace
 
@@ -42,12 +42,10 @@ def _get_bundled_dir() -> Path:
     """Locate the bundled skills/ directory.
 
     Checks HERMES_BUNDLED_SKILLS env var first (set by Nix wrapper),
-    then falls back to the relative path from this source file.
+    then a wheel-installed data dir, then falls back to the relative
+    path from this source file.
     """
-    env_override = os.getenv("HERMES_BUNDLED_SKILLS")
-    if env_override:
-        return Path(env_override)
-    return Path(__file__).parent.parent / "skills"
+    return get_bundled_skills_dir(Path(__file__).parent.parent / "skills")
 
 
 def _read_manifest() -> Dict[str, str]:
@@ -345,7 +343,7 @@ def reset_bundled_skill(name: str, restore: bool = False) -> dict:
     manifest = _read_manifest()
     bundled_dir = _get_bundled_dir()
     bundled_skills = _discover_bundled_skills(bundled_dir)
-    bundled_by_name = {skill_name: skill_dir for skill_name, skill_dir in bundled_skills}
+    bundled_by_name = dict(bundled_skills)
 
     in_manifest = name in manifest
     is_bundled = name in bundled_by_name
