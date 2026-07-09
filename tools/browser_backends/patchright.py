@@ -6,6 +6,7 @@ import importlib
 import importlib.util
 import logging
 import os
+import socket
 import shutil
 import subprocess
 import tempfile
@@ -868,11 +869,21 @@ def _ensure_xvfb_for_patchright(cfg: dict[str, Any]) -> None:
 
     screen = str(xvfb_cfg.get("screen") or "1920x1080x24").strip() or "1920x1080x24"
 
+    # Reuse a live display if another session already owns the configured Xvfb.
+    if _xvfb_display_is_live(display):
+        os.environ["DISPLAY"] = display
+        return
+
     with _XVFB_LOCK:
         global _XVFB_PROCESS, _XVFB_DISPLAY
 
         if _XVFB_PROCESS is not None and _XVFB_PROCESS.poll() is None:
             os.environ["DISPLAY"] = _XVFB_DISPLAY or display
+            return
+
+        if _xvfb_display_is_live(display):
+            _XVFB_DISPLAY = display
+            os.environ["DISPLAY"] = display
             return
 
         if shutil.which("Xvfb") is None:
@@ -882,11 +893,61 @@ def _ensure_xvfb_for_patchright(cfg: dict[str, Any]) -> None:
         proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         time.sleep(0.25)
         if proc.poll() is not None:
+            if _xvfb_display_is_live(display):
+                os.environ["DISPLAY"] = display
+                return
             raise RuntimeError("Failed to start Xvfb for Patchright (process exited immediately).")
 
         _XVFB_PROCESS = proc
         _XVFB_DISPLAY = display
         os.environ["DISPLAY"] = display
+
+
+def _xvfb_display_is_live(display: str) -> bool:
+    """Return True when an X server is actively listening on ``display``.
+
+    Hermes sometimes finds an existing Xvfb already running on the configured
+    display (for example, from a detached shell or another agent session).
+    In that case we should reuse the live display instead of trying to spawn a
+    second X server on the same socket.
+    """
+
+    display_num = display.lstrip(":").split(".", 1)[0].strip()
+    if not display_num:
+        return False
+
+    socket_path = f"/tmp/.X11-unix/X{display_num}"
+    if os.path.exists(socket_path):
+        try:
+            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
+                sock.settimeout(0.2)
+                sock.connect(socket_path)
+            return True
+        except OSError:
+            pass
+
+    lock_path = f"/tmp/.X{display_num}-lock"
+    if not os.path.exists(lock_path):
+        return False
+
+    try:
+        lock_text = Path(lock_path).read_text(encoding="utf-8", errors="ignore").strip()
+    except Exception:
+        return True
+
+    if not lock_text:
+        return True
+
+    try:
+        pid = int(lock_text.splitlines()[0].strip())
+    except Exception:
+        return True
+
+    try:
+        os.kill(pid, 0)
+        return True
+    except OSError:
+        return False
 
 
 def _timeout_ms(value: Any, default_ms: int) -> int:

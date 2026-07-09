@@ -1,4 +1,5 @@
 import importlib.util
+import os
 import time
 
 import pytest
@@ -348,6 +349,41 @@ def test_init_session_patchright_uses_executable_path_and_xvfb(monkeypatch):
 
     assert isinstance(state, PatchrightRuntimeSession)
     assert runtime.chromium.launch_kwargs.get("executable_path") == "/usr/bin/google-chrome"
+
+
+def test_init_session_patchright_reuses_live_xvfb_display(monkeypatch):
+    backend = PatchrightBackend()
+    runtime = _FakePlaywrightRuntime()
+
+    monkeypatch.setattr(
+        "tools.browser_backends.patchright._SYNC_PLAYWRIGHT",
+        _DisplayCheckingSyncPlaywrightFactory(runtime, expected_display=":99"),
+    )
+    monkeypatch.setattr(
+        "tools.browser_backends.patchright._patchright_config",
+        lambda *_args, **_kwargs: {
+            "headless": False,
+            "xvfb": {"enabled": True, "display": ":99", "screen": "1920x1080x24", "force": False},
+        },
+    )
+    monkeypatch.setattr("tools.browser_backends.patchright._resolve_patchright_cdp_url", lambda cfg: "")
+    monkeypatch.setattr("tools.browser_backends.patchright.tempfile.mkdtemp", lambda **kwargs: "/tmp/hermes-test-profile")
+    monkeypatch.setattr("tools.browser_backends.patchright._xvfb_display_is_live", lambda display: True)
+
+    called = {"popen": False}
+
+    def _unexpected_popen(*args, **kwargs):
+        called["popen"] = True
+        raise AssertionError("Xvfb should not be spawned when the display is already live")
+
+    monkeypatch.setattr("tools.browser_backends.patchright.subprocess.Popen", _unexpected_popen)
+    monkeypatch.delenv("DISPLAY", raising=False)
+
+    state = backend.init_session("task-reuse")
+
+    assert isinstance(state, PatchrightRuntimeSession)
+    assert os.environ.get("DISPLAY") == ":99"
+    assert called["popen"] is False
 
 
 def test_init_session_patchright_includes_proxy_from_url(monkeypatch):
