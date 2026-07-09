@@ -21,7 +21,7 @@ class TestResolveCdpOverride:
         response.raise_for_status.return_value = None
         response.json.return_value = {"webSocketDebuggerUrl": WS_URL}
 
-        with patch("tools.browser_backends.agent_browser.requests.get", return_value=response) as mock_get:
+        with patch("tools.browser_tool.requests.get", return_value=response) as mock_get:
             resolved = _resolve_cdp_override(HTTP_URL)
 
         assert resolved == WS_URL
@@ -34,7 +34,7 @@ class TestResolveCdpOverride:
         response.raise_for_status.return_value = None
         response.json.return_value = {"webSocketDebuggerUrl": WS_URL}
 
-        with patch("tools.browser_backends.agent_browser.requests.get", return_value=response) as mock_get:
+        with patch("tools.browser_tool.requests.get", return_value=response) as mock_get:
             resolved = _resolve_cdp_override(f"ws://{HOST}:{PORT}")
 
         assert resolved == WS_URL
@@ -43,7 +43,7 @@ class TestResolveCdpOverride:
     def test_falls_back_to_raw_url_when_discovery_fails(self):
         from tools.browser_tool import _resolve_cdp_override
 
-        with patch("tools.browser_backends.agent_browser.requests.get", side_effect=RuntimeError("boom")):
+        with patch("tools.browser_tool.requests.get", side_effect=RuntimeError("boom")):
             assert _resolve_cdp_override(HTTP_URL) == HTTP_URL
 
 

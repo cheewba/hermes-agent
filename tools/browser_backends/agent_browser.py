@@ -18,12 +18,12 @@ from typing import Any
 import requests
 
 from agent.auxiliary_client import call_llm
+from agent.browser_provider import BrowserProvider as CloudBrowserProvider
 from hermes_constants import get_hermes_dir, get_hermes_home
 from tools.browser_backend_base import BrowserBackend, BrowserSessionState
-from tools.browser_providers.base import CloudBrowserProvider
-from tools.browser_providers.browser_use import BrowserUseProvider
-from tools.browser_providers.browserbase import BrowserbaseProvider
 from tools.browser_session_store import BrowserSessionStore
+from plugins.browser.browser_use.provider import BrowserUseBrowserProvider
+from plugins.browser.browserbase.provider import BrowserbaseBrowserProvider
 
 logger = logging.getLogger(__name__)
 
@@ -37,8 +37,8 @@ _SANE_PATH = (
 )
 
 _PROVIDER_REGISTRY: dict[str, type[CloudBrowserProvider]] = {
-    "browserbase": BrowserbaseProvider,
-    "browser-use": BrowserUseProvider,
+    "browserbase": BrowserbaseBrowserProvider,
+    "browser-use": BrowserUseBrowserProvider,
 }
 
 
@@ -895,5 +895,4 @@ def _cleanup_old_recordings(max_age_hours: int = 72) -> None:
                 pass
     except Exception:
         pass
-
 

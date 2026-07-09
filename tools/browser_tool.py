@@ -778,8 +778,73 @@ def _termux_browser_install_error() -> str:
     )
 
 
+def _get_backend():
+    """Return the configured pluggable browser backend.
+
+    The historical agent-browser path still lives directly in this module.
+    Non-agent-browser backends such as Patchright are selected through the
+    backend registry and delegated to by the public tool functions below.
+    """
+    from tools.browser_backend_registry import get_browser_backend
+
+    return get_browser_backend()
+
+
+def get_initialized_backends():
+    from tools.browser_backend_registry import get_initialized_backends as _impl
+
+    return _impl()
+
+
+try:  # Test-patchable symbol; the import is optional for lean installs.
+    from tools.browser_backends.patchright import PatchrightBackend
+except Exception:  # pragma: no cover - dependency may be absent in minimal envs
+    class PatchrightBackend:  # type: ignore[no-redef]
+        pass
+
+
+def _backend_name(backend: object) -> str:
+    try:
+        name = getattr(backend, "backend_name")()
+    except Exception:
+        return ""
+    return str(name or "").strip()
+
+
+def _dispatch_to_backend(backend: object | None = None) -> bool:
+    """Whether the configured backend should handle browser operations."""
+    if backend is None:
+        try:
+            backend = _get_backend()
+        except Exception as exc:
+            logger.debug("Browser backend resolution failed: %s", exc)
+            return False
+    name = _backend_name(backend)
+    # agent-browser remains the native implementation in this module. Camofox
+    # keeps its legacy REST path via _is_camofox_mode().
+    if name in {"agent-browser", "camofox"}:
+        return False
+    return True
+
+
+def _is_patchright_backend(backend: object) -> bool:
+    return _backend_name(backend) == "patchright" or isinstance(backend, PatchrightBackend)
+
+
+def _backend_result_json(result: object) -> str:
+    if isinstance(result, str):
+        return result
+    return json.dumps(_redact_browser_output(result), ensure_ascii=False, default=str)
+
+
 def _is_local_mode() -> bool:
     """Return True when the browser tool will use a local browser backend."""
+    try:
+        backend = _get_backend()
+        if _dispatch_to_backend(backend):
+            return bool(backend.is_local())
+    except Exception:
+        pass
     if _get_cdp_override():
         return False
     return _get_cloud_provider() is None
@@ -800,6 +865,13 @@ def _is_local_backend() -> bool:
     that the terminal cannot.  In this case, SSRF protection should be
     enabled even though the browser is technically "local".
     """
+    try:
+        backend = _get_backend()
+        if _dispatch_to_backend(backend):
+            return bool(backend.is_local())
+    except Exception as exc:
+        logger.debug("Browser backend locality check failed: %s", exc)
+
     # A CDP override points the browser at a separate Chrome process whose
     # network position is not guaranteed to match the terminal (it may live
     # off-host). Don't treat it as a trusted local backend — otherwise a
@@ -1456,6 +1528,21 @@ def _emergency_cleanup_all_sessions():
     if _cleanup_done:
         return
     _cleanup_done = True
+
+    try:
+        for backend in get_initialized_backends():
+            for session in list(getattr(backend, "list_sessions")()):
+                try:
+                    backend.emergency_cleanup(session.task_id)
+                except Exception:
+                    logger.debug(
+                        "Backend emergency cleanup failed for %s/%s",
+                        _backend_name(backend),
+                        getattr(session, "task_id", "?"),
+                        exc_info=True,
+                    )
+    except Exception as exc:
+        logger.debug("Backend emergency cleanup scan failed: %s", exc)
 
     # Clean up this process's own sessions first, so their owner_pid files
     # are removed before the reaper scans.
@@ -2783,6 +2870,25 @@ def browser_navigate(url: str, task_id: Optional[str] = None) -> str:
             "blocked_by_policy": {"host": blocked["host"], "rule": blocked["rule"], "source": blocked["source"]},
         })
 
+    try:
+        backend = _get_backend()
+        if _dispatch_to_backend(backend):
+            result = backend.navigate(effective_task_id, url)
+            if isinstance(result, dict) and result.get("success"):
+                _last_active_session_key[effective_task_id] = effective_task_id
+                try:
+                    snap = backend.snapshot(effective_task_id, full=False)
+                    if isinstance(snap, dict) and snap.get("success"):
+                        if "snapshot" in snap:
+                            result["snapshot"] = snap.get("snapshot", "")
+                        if "element_count" in snap:
+                            result["element_count"] = snap.get("element_count", 0)
+                except Exception as exc:
+                    logger.debug("Backend auto-snapshot after navigate failed: %s", exc)
+            return _backend_result_json(result)
+    except Exception as exc:
+        return json.dumps({"success": False, "error": f"Browser backend failed: {exc}"}, ensure_ascii=False)
+
     # Camofox backend — delegate after safety checks pass
     if _is_camofox_mode():
         from tools.browser_camofox import camofox_navigate
@@ -2939,6 +3045,20 @@ def browser_snapshot(
 
     effective_task_id = _last_session_key(task_id or "default")
 
+    try:
+        backend = _get_backend()
+        if _dispatch_to_backend(backend):
+            result = backend.snapshot(effective_task_id, full=full)
+            if isinstance(result, dict) and result.get("success"):
+                snapshot_text = str(result.get("snapshot", ""))
+                if len(snapshot_text) > SNAPSHOT_SUMMARIZE_THRESHOLD and user_task:
+                    result["snapshot"] = _extract_relevant_content(snapshot_text, user_task)
+                elif len(snapshot_text) > SNAPSHOT_SUMMARIZE_THRESHOLD:
+                    result["snapshot"] = _truncate_snapshot(snapshot_text)
+            return _backend_result_json(result)
+    except Exception as exc:
+        return json.dumps({"success": False, "error": f"Browser backend failed: {exc}"}, ensure_ascii=False)
+
     # Build command args based on full flag
     args = []
     if not full:
@@ -3036,6 +3156,12 @@ def browser_click(ref: str, task_id: Optional[str] = None) -> str:
     blocked = _blocked_private_page_action(effective_task_id, "click")
     if blocked is not None:
         return blocked
+    try:
+        backend = _get_backend()
+        if _dispatch_to_backend(backend):
+            return _backend_result_json(backend.click(effective_task_id, ref))
+    except Exception as exc:
+        return json.dumps({"success": False, "error": f"Browser backend failed: {exc}"}, ensure_ascii=False)
 
     # Ensure ref starts with @
     if not ref.startswith("@"):
@@ -3077,6 +3203,12 @@ def browser_type(ref: str, text: str, task_id: Optional[str] = None) -> str:
     blocked = _blocked_private_page_action(effective_task_id, "type")
     if blocked is not None:
         return blocked
+    try:
+        backend = _get_backend()
+        if _dispatch_to_backend(backend):
+            return _backend_result_json(backend.type(effective_task_id, ref, text))
+    except Exception as exc:
+        return json.dumps({"success": False, "error": f"Browser backend failed: {exc}"}, ensure_ascii=False)
 
     # Ensure ref starts with @
     if not ref.startswith("@"):
@@ -3148,6 +3280,12 @@ def browser_scroll(direction: str, task_id: Optional[str] = None) -> str:
         return result
 
     effective_task_id = _last_session_key(task_id or "default")
+    try:
+        backend = _get_backend()
+        if _dispatch_to_backend(backend):
+            return _backend_result_json(backend.scroll(effective_task_id, direction))
+    except Exception as exc:
+        return json.dumps({"success": False, "error": f"Browser backend failed: {exc}"}, ensure_ascii=False)
 
     result = _run_browser_command(effective_task_id, "scroll", [direction, str(_SCROLL_PIXELS)])
     if not result.get("success"):
@@ -3179,6 +3317,24 @@ def browser_back(task_id: Optional[str] = None) -> str:
         return camofox_back(task_id)
 
     effective_task_id = _last_session_key(task_id or "default")
+    try:
+        backend = _get_backend()
+        if _dispatch_to_backend(backend):
+            result = backend.back(effective_task_id)
+            if isinstance(result, dict) and result.get("success") and _eval_ssrf_guard_active(effective_task_id):
+                _blocked_url = _current_page_private_url(effective_task_id)
+                if _blocked_url:
+                    return json.dumps({
+                        "success": False,
+                        "error": (
+                            "Blocked: page URL targets a private or internal address "
+                            f"({_blocked_url}). Browser history navigation (back) "
+                            "landed on this address."
+                        ),
+                    }, ensure_ascii=False)
+            return _backend_result_json(result)
+    except Exception as exc:
+        return json.dumps({"success": False, "error": f"Browser backend failed: {exc}"}, ensure_ascii=False)
     result = _run_browser_command(effective_task_id, "back", [])
 
     if result.get("success"):
@@ -3234,6 +3390,12 @@ def browser_press(key: str, task_id: Optional[str] = None) -> str:
     blocked = _blocked_private_page_action(effective_task_id, "press")
     if blocked is not None:
         return blocked
+    try:
+        backend = _get_backend()
+        if _dispatch_to_backend(backend):
+            return _backend_result_json(backend.press(effective_task_id, key))
+    except Exception as exc:
+        return json.dumps({"success": False, "error": f"Browser backend failed: {exc}"}, ensure_ascii=False)
     result = _run_browser_command(effective_task_id, "press", [key])
 
     if result.get("success"):
@@ -3307,6 +3469,13 @@ def browser_console(clear: bool = False, expression: Optional[str] = None, task_
                     "JavaScript navigation via browser_console."
                 ),
             }, ensure_ascii=False)
+
+    try:
+        backend = _get_backend()
+        if _dispatch_to_backend(backend):
+            return _backend_result_json(backend.console(effective_task_id, clear=clear))
+    except Exception as exc:
+        return json.dumps({"success": False, "error": f"Browser backend failed: {exc}"}, ensure_ascii=False)
 
     console_args = ["--clear"] if clear else []
     error_args = ["--clear"] if clear else []
@@ -3393,6 +3562,18 @@ def _current_page_private_url(effective_task_id: str) -> Optional[str]:
     page is public, the URL can't be determined, or the check errors (fail-open
     on probe failure, matching the snapshot/vision guards).
     """
+    try:
+        backend = _get_backend()
+        if _dispatch_to_backend(backend) and hasattr(backend, "get_session"):
+            session = backend.get_session(effective_task_id)
+            current_url = str(getattr(session, "current_url", "") or "")
+            if current_url and (
+                _is_always_blocked_url(current_url) or not _is_safe_url(current_url)
+            ):
+                return current_url
+    except Exception as exc:
+        logger.debug("_current_page_private_url: backend probe failed (%s)", exc)
+
     try:
         url_result = _run_browser_command(
             effective_task_id, "eval", ["window.location.href"],
@@ -3556,6 +3737,26 @@ def _browser_eval(expression: str, task_id: Optional[str] = None) -> str:
     # agent-browser session key.  The literal pre-scan above already ran.
     if _is_camofox_mode():
         return _camofox_eval(expression, task_id)
+
+    try:
+        backend = _get_backend()
+        if _dispatch_to_backend(backend) and hasattr(backend, "evaluate"):
+            result = backend.evaluate(effective_task_id, expression)
+            if isinstance(result, dict) and result.get("success") and _eval_ssrf_guard_active(effective_task_id):
+                _blocked_url = _current_page_private_url(effective_task_id)
+                if _blocked_url:
+                    return json.dumps({
+                        "success": False,
+                        "error": (
+                            "Blocked: page URL targets a private or internal "
+                            f"address ({_blocked_url}). This may have been "
+                            "caused by a JavaScript navigation via "
+                            "browser_console."
+                        ),
+                    }, ensure_ascii=False)
+            return _backend_result_json(result)
+    except Exception as exc:
+        return json.dumps({"success": False, "error": f"Browser backend failed: {exc}"}, ensure_ascii=False)
 
     # ── Private-network guard (eval return-value path) ──────────────────────
     # The literal pre-scan above closes the direct-fetch sub-path
@@ -3826,6 +4027,23 @@ def browser_get_images(task_id: Optional[str] = None) -> str:
         return camofox_get_images(task_id)
 
     effective_task_id = _last_session_key(task_id or "default")
+    try:
+        backend = _get_backend()
+        if _dispatch_to_backend(backend):
+            if _eval_ssrf_guard_active(effective_task_id):
+                _blocked_url = _current_page_private_url(effective_task_id)
+                if _blocked_url:
+                    return json.dumps({
+                        "success": False,
+                        "error": (
+                            "Blocked: page URL targets a private or internal address "
+                            f"({_blocked_url}). This may have been caused by a "
+                            "JavaScript navigation via browser_console."
+                        ),
+                    }, ensure_ascii=False)
+            return _backend_result_json(backend.get_images(effective_task_id))
+    except Exception as exc:
+        return json.dumps({"success": False, "error": f"Browser backend failed: {exc}"}, ensure_ascii=False)
 
     # Use eval to run JavaScript that extracts images
     js_code = """JSON.stringify(
@@ -3949,6 +4167,13 @@ def browser_vision(question: str, annotate: bool = False, task_id: Optional[str]
                     }, ensure_ascii=False)
         except Exception as _url_exc:
             logger.debug("browser_vision: URL safety check failed (%s)", _url_exc)
+
+    try:
+        backend = _get_backend()
+        if _dispatch_to_backend(backend):
+            return _backend_result_json(backend.vision(effective_task_id, question, annotate=annotate))
+    except Exception as exc:
+        return json.dumps({"success": False, "error": f"Browser backend failed: {exc}"}, ensure_ascii=False)
 
     # Lightpanda has no graphical renderer — pre-route screenshots to Chrome
     # via the fallback helper instead of letting the normal path fail with a
@@ -4232,6 +4457,191 @@ def _cleanup_old_recordings(max_age_hours=72):
         logger.debug("Recording cleanup error (non-critical): %s", e)
 
 
+def _public_proxy_summary(proxy_url: str) -> dict[str, Any]:
+    from urllib.parse import urlsplit
+
+    raw = str(proxy_url or "").strip()
+    candidate = raw if "://" in raw else f"http://{raw}"
+    parsed = urlsplit(candidate)
+    server = ""
+    if parsed.hostname:
+        server = f"{parsed.scheme or 'http'}://{parsed.hostname}"
+        if parsed.port:
+            server += f":{parsed.port}"
+    return {
+        "server": server or raw,
+        "has_auth": bool(parsed.username or parsed.password),
+    }
+
+
+def check_browser_set_proxy_requirements() -> bool:
+    try:
+        backend = _get_backend()
+    except Exception:
+        return False
+    if not _is_patchright_backend(backend):
+        return False
+    try:
+        return bool(backend.is_configured())
+    except Exception:
+        return False
+
+
+def browser_set_proxy(
+    proxy_url: Optional[str] = None,
+    clear: bool = False,
+    task_id: Optional[str] = None,
+) -> str:
+    """Set or clear a Patchright runtime proxy override for a browser task."""
+    task = task_id or "default"
+    try:
+        backend = _get_backend()
+        if not _is_patchright_backend(backend):
+            return json.dumps({
+                "success": False,
+                "error": "browser_set_proxy requires browser.backend: patchright",
+            }, ensure_ascii=False)
+
+        if hasattr(backend, "supports_runtime_proxy") and not backend.supports_runtime_proxy(task):
+            return json.dumps({
+                "success": False,
+                "error": "Runtime proxy overrides are not supported in Patchright CDP mode.",
+            }, ensure_ascii=False)
+
+        proxy = None if clear else {"url": str(proxy_url or "").strip()}
+        if not clear and not proxy["url"]:
+            return json.dumps({
+                "success": False,
+                "error": "proxy_url is required unless clear=true",
+            }, ensure_ascii=False)
+
+        session_restarted = False
+        if not clear and hasattr(backend, "close_session"):
+            session_restarted = bool(backend.close_session(task))
+        backend.set_runtime_proxy(task, proxy)
+
+        if clear:
+            return json.dumps({
+                "success": True,
+                "cleared": True,
+                "session_restarted": session_restarted,
+            }, ensure_ascii=False)
+
+        return json.dumps({
+            "success": True,
+            "proxy": _public_proxy_summary(proxy["url"]),
+            "session_restarted": session_restarted,
+        }, ensure_ascii=False)
+    except Exception as exc:
+        return json.dumps({"success": False, "error": str(exc)}, ensure_ascii=False)
+
+
+def check_browser_solve_cloudflare_requirements() -> bool:
+    try:
+        backend = _get_backend()
+        return _dispatch_to_backend(backend) and hasattr(backend, "solve_cloudflare")
+    except Exception:
+        return False
+
+
+def browser_solve_cloudflare(
+    max_wait_seconds: int = 120,
+    task_id: Optional[str] = None,
+) -> str:
+    try:
+        backend = _get_backend()
+        if not hasattr(backend, "solve_cloudflare"):
+            return json.dumps({
+                "success": False,
+                "error": "Active browser backend does not support Cloudflare solving.",
+            }, ensure_ascii=False)
+        return _backend_result_json(
+            backend.solve_cloudflare(task_id or "default", max_wait_seconds=max_wait_seconds)
+        )
+    except Exception as exc:
+        return json.dumps({"success": False, "error": str(exc)}, ensure_ascii=False)
+
+
+def check_browser_solve_hcaptcha_requirements() -> bool:
+    try:
+        backend = _get_backend()
+        if not _is_patchright_backend(backend):
+            return False
+        support_fn = getattr(backend, "supports_hcaptcha_challenger", None)
+        return bool(support_fn()) if callable(support_fn) else False
+    except Exception:
+        return False
+
+
+def browser_solve_hcaptcha(
+    max_wait_seconds: int = 120,
+    task_id: Optional[str] = None,
+) -> str:
+    try:
+        backend = _get_backend()
+        if not _is_patchright_backend(backend):
+            return json.dumps({
+                "success": False,
+                "error": "browser_solve_hcaptcha requires browser.backend: patchright",
+            }, ensure_ascii=False)
+        support_fn = getattr(backend, "supports_hcaptcha_challenger", None)
+        if not callable(support_fn) or not support_fn():
+            return json.dumps({
+                "success": False,
+                "error": "hcaptcha-challenger is not available for the active Patchright backend.",
+            }, ensure_ascii=False)
+        if hasattr(backend, "solve_hcaptcha"):
+            return _backend_result_json(
+                backend.solve_hcaptcha(task_id or "default", max_wait_seconds=max_wait_seconds)
+            )
+        return json.dumps({
+            "success": False,
+            "error": "Active browser backend does not expose a dedicated hCaptcha solver.",
+        }, ensure_ascii=False)
+    except Exception as exc:
+        return json.dumps({"success": False, "error": str(exc)}, ensure_ascii=False)
+
+
+def browser_close(task_id: Optional[str] = None) -> str:
+    task = task_id or "default"
+    had_session = False
+    try:
+        for backend in get_initialized_backends():
+            get_session = getattr(backend, "get_session", None)
+            list_sessions = getattr(backend, "list_sessions", None)
+            session = get_session(task) if callable(get_session) else None
+            has_listed_session = False
+            if callable(list_sessions):
+                try:
+                    has_listed_session = any(
+                        getattr(s, "task_id", None) == task for s in list_sessions()
+                    )
+                except Exception:
+                    has_listed_session = False
+            if session is not None:
+                had_session = True
+            if has_listed_session:
+                had_session = True
+            try:
+                closed = backend.close_session(task)
+                if closed and not callable(get_session) and not callable(list_sessions):
+                    had_session = True
+            except Exception:
+                logger.debug(
+                    "Backend close failed for %s/%s",
+                    _backend_name(backend),
+                    task,
+                    exc_info=True,
+                )
+    except Exception as exc:
+        logger.debug("Backend close scan failed: %s", exc)
+    cleanup_browser(task)
+    response: dict[str, Any] = {"success": True, "closed": True}
+    if not had_session:
+        response["warning"] = "No active browser session was found for this task."
+    return json.dumps(response, ensure_ascii=False)
+
+
 # ============================================================================
 # Cleanup and Management Functions
 # ============================================================================
@@ -4254,6 +4664,22 @@ def cleanup_browser(task_id: Optional[str] = None) -> None:
     """
     if task_id is None:
         task_id = "default"
+
+    try:
+        for backend in get_initialized_backends():
+            if _backend_name(backend) == "agent-browser":
+                continue
+            try:
+                backend.close_session(task_id)
+            except Exception:
+                logger.debug(
+                    "Backend cleanup failed for %s/%s",
+                    _backend_name(backend),
+                    task_id,
+                    exc_info=True,
+                )
+    except Exception as exc:
+        logger.debug("Backend cleanup scan failed: %s", exc)
 
     # Expand to the full set of session keys to reap. For a bare task_id
     # that includes the cloud/primary key + the local sidecar if one exists.
@@ -4369,6 +4795,23 @@ def cleanup_all_browsers() -> None:
         task_ids = list(_active_sessions.keys())
     for task_id in task_ids:
         cleanup_browser(task_id)
+
+    try:
+        for backend in get_initialized_backends():
+            if _backend_name(backend) == "agent-browser":
+                continue
+            for session in list(getattr(backend, "list_sessions")()):
+                try:
+                    backend.close_session(session.task_id)
+                except Exception:
+                    logger.debug(
+                        "Backend cleanup_all failed for %s/%s",
+                        _backend_name(backend),
+                        getattr(session, "task_id", "?"),
+                        exc_info=True,
+                    )
+    except Exception as exc:
+        logger.debug("Backend cleanup_all scan failed: %s", exc)
 
     # Tear down CDP supervisors for all tasks so background threads exit.
     try:
@@ -4592,6 +5035,13 @@ def check_browser_requirements() -> bool:
     Returns:
         True if all requirements are met, False otherwise
     """
+    try:
+        backend = _get_backend()
+        if _dispatch_to_backend(backend):
+            return bool(backend.is_configured())
+    except Exception as exc:
+        logger.debug("Browser backend requirement check failed: %s", exc)
+
     # Camofox backend — only needs the server URL, no agent-browser CLI
     if _is_camofox_mode():
         return True
@@ -4717,6 +5167,58 @@ if __name__ == "__main__":
 # ---------------------------------------------------------------------------
 from tools.registry import registry, tool_error
 
+BROWSER_TOOL_SCHEMAS.extend([
+    {
+        "name": "browser_set_proxy",
+        "description": "Set or clear a runtime proxy for the active Patchright browser task. Restarts the task browser session so the next navigation uses the proxy.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "proxy_url": {
+                    "type": "string",
+                    "description": "Proxy URL, e.g. http://user:pass@host:8080. Omit when clear is true.",
+                },
+                "clear": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Clear the runtime proxy override for this task.",
+                },
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "browser_solve_cloudflare",
+        "description": "Ask the active browser backend to solve a Cloudflare challenge when a supported solver extension is available.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "max_wait_seconds": {
+                    "type": "integer",
+                    "default": 120,
+                    "description": "Maximum seconds to wait for the challenge to clear.",
+                },
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "browser_solve_hcaptcha",
+        "description": "Ask the active browser backend to solve an hCaptcha challenge when a supported solver is available.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "max_wait_seconds": {
+                    "type": "integer",
+                    "default": 120,
+                    "description": "Maximum seconds to wait for the challenge to clear.",
+                },
+            },
+            "required": [],
+        },
+    },
+])
+
 _BROWSER_SCHEMA_MAP = {s["name"]: s for s in BROWSER_TOOL_SCHEMAS}
 
 registry.register(
@@ -4726,6 +5228,40 @@ registry.register(
     handler=lambda args, **kw: browser_navigate(url=args.get("url", ""), task_id=kw.get("task_id")),
     check_fn=check_browser_requirements,
     emoji="🌐",
+)
+registry.register(
+    name="browser_set_proxy",
+    toolset="browser",
+    schema=_BROWSER_SCHEMA_MAP["browser_set_proxy"],
+    handler=lambda args, **kw: browser_set_proxy(
+        proxy_url=args.get("proxy_url"),
+        clear=args.get("clear", False),
+        task_id=kw.get("task_id"),
+    ),
+    check_fn=check_browser_set_proxy_requirements,
+    emoji="🌐",
+)
+registry.register(
+    name="browser_solve_cloudflare",
+    toolset="browser",
+    schema=_BROWSER_SCHEMA_MAP["browser_solve_cloudflare"],
+    handler=lambda args, **kw: browser_solve_cloudflare(
+        max_wait_seconds=args.get("max_wait_seconds", 120),
+        task_id=kw.get("task_id"),
+    ),
+    check_fn=check_browser_solve_cloudflare_requirements,
+    emoji="🛡️",
+)
+registry.register(
+    name="browser_solve_hcaptcha",
+    toolset="browser",
+    schema=_BROWSER_SCHEMA_MAP["browser_solve_hcaptcha"],
+    handler=lambda args, **kw: browser_solve_hcaptcha(
+        max_wait_seconds=args.get("max_wait_seconds", 120),
+        task_id=kw.get("task_id"),
+    ),
+    check_fn=check_browser_solve_hcaptcha_requirements,
+    emoji="🧩",
 )
 registry.register(
     name="browser_snapshot",

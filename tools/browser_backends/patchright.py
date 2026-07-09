@@ -3,6 +3,7 @@ from __future__ import annotations
 import atexit
 import base64
 import importlib
+import importlib.util
 import logging
 import os
 import shutil
@@ -139,6 +140,9 @@ class PatchrightBackend(BrowserBackend):
         if not self.supports_runtime_proxy(task_id):
             raise RuntimeError("Runtime proxy overrides are not supported in patchright CDP mode")
         _set_patchright_proxy_override(task_id, proxy)
+
+    def supports_hcaptcha_challenger(self) -> bool:
+        return importlib.util.find_spec("hcaptcha_challenger") is not None
 
     @_run_in_pw_thread
     def init_session(self, task_id: str) -> BrowserSessionState:
@@ -657,6 +661,24 @@ class PatchrightBackend(BrowserBackend):
             "total_errors": len(errors),
         }
 
+    @_run_in_pw_thread
+    def evaluate(self, task_id: str, expression: str) -> dict[str, Any]:
+        session = self._get_runtime(task_id)
+        if isinstance(session, dict):
+            return session
+
+        try:
+            result = session.page.evaluate(expression)
+            session.current_url = session.page.url
+            self._sessions.touch(task_id)
+            return {
+                "success": True,
+                "result": result,
+                "result_type": type(result).__name__,
+            }
+        except Exception as exc:
+            return {"success": False, "error": f"eval failed: {exc}"}
+
 
     @_run_in_pw_thread
     def solve_cloudflare(self, task_id: str, max_wait_seconds: int = 120) -> dict[str, Any]:
@@ -679,6 +701,34 @@ class PatchrightBackend(BrowserBackend):
                 return {"success": False, "error": "2captcha 'Solve' button not found on the page. Ensure the extension is loaded and API key is set."}
         except Exception as exc:
             return {"success": False, "error": f"Failed to solve Cloudflare: {exc}"}
+
+    @_run_in_pw_thread
+    def solve_hcaptcha(self, task_id: str, max_wait_seconds: int = 120) -> dict[str, Any]:
+        session = self._get_runtime(task_id)
+        if isinstance(session, dict):
+            return session
+        if not self.supports_hcaptcha_challenger():
+            return {
+                "success": False,
+                "error": "hcaptcha-challenger is not installed in this environment.",
+            }
+
+        try:
+            # The hcaptcha-challenger package exposes multiple solving APIs
+            # across releases. Keep the tool explicit rather than pretending a
+            # solve happened when no compatible runtime adapter is present.
+            import hcaptcha_challenger  # noqa: F401
+
+            return {
+                "success": False,
+                "error": (
+                    "hcaptcha-challenger is installed, but this Patchright "
+                    "backend does not yet expose a compatible in-page solver "
+                    "adapter for the active challenge."
+                ),
+            }
+        except Exception as exc:
+            return {"success": False, "error": f"Failed to solve hCaptcha: {exc}"}
 
     def _get_runtime(self, task_id: str) -> PatchrightRuntimeSession | dict[str, Any]:
         task_id = task_id or "default"
