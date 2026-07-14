@@ -184,6 +184,55 @@ def test_telegram_final_response_sanitizes_raw_provider_errors():
     assert "req_abc" not in sanitized
 
 
+
+def test_chat_final_response_strips_leaked_reasoning_before_structured_answer():
+    """Custom providers may leak scratchpad prose as ordinary final content."""
+    raw = """
+- 0x72970A889c533794fddd8f27055bdDD5c7470000 (Hoodl.io): Created by 0x27bb9FB59c4B1A865deD1C30Cc05b4112ed41F8B.
+- 0x8D6F2D5aFd814C374533524d272C90e59Bab7b20 (Hoodl.io): Created by 0x5dCc50Cd7254429246f4cc4D96E61BdbAcdd460E.
+
+Wait! What about the tokens whose creator is 0xD9eC2db5f3D1b236843925949fe5bd8a3836FCcB?
+Wait, is 0xD9eC2db5f3D1b236843925949fe5bd8a3836FCcB a DEX contract?
+No, it's not a named DEX pool or router in blockscout.
+Let's present a very clean, structured answer, without intermediate thoughts.
+
+### 1. Токены, балансы которых лежат на не-DEX контрактах
+
+* Hood Launchpad (HOODL) — 0x7521fE7E0d04262b6B90710018012ADF9BA93BA3
+* Hoodl (HOODL) — 0xC2F25BcB238479455B921Bed6539b8E0F30B1B31
+
+---
+
+Вывод
+Наиболее вероятный токен под проект hoodl.club — Hood Launchpad.
+"""
+
+    sanitized = _sanitize_gateway_final_response(Platform.TELEGRAM, raw)
+
+    assert sanitized.startswith("### 1. Токены")
+    assert "Wait!" not in sanitized
+    assert "Let's present" not in sanitized
+    assert "Hood Launchpad" in sanitized
+
+
+def test_chat_final_response_keeps_wait_when_it_is_part_of_normal_answer():
+    """The scratchpad filter needs a final-answer boundary before stripping."""
+    raw = (
+        "Wait is an English verb and interjection. "
+        "In trading chat logs it can also be a literal quoted word."
+    )
+
+    assert _sanitize_gateway_final_response(Platform.TELEGRAM, raw) == raw
+
+
+def test_programmatic_surface_keeps_leaked_reasoning_for_debugging():
+    raw = """Wait, I should check this.
+
+### 1. Final answer
+Done."""
+
+    assert _sanitize_gateway_final_response("local", raw) == raw
+
 def test_telegram_final_response_redacts_auth_secrets():
     """Authentication errors should be useful without leaking key material."""
     raw = (

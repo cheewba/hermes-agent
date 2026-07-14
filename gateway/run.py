@@ -411,6 +411,60 @@ def _looks_like_gateway_provider_error(text: str) -> bool:
     return bool(_GATEWAY_PROVIDER_ERROR_SHAPE_RE.search(body))
 
 
+_LEAKED_REASONING_MARKER_RE = re.compile(
+    r"(?im)^\s*(?:"
+    r"wait(?:[!,.?]|\b)"
+    r"|ah(?:[!,.?]|\b)"
+    r"|hmm(?:[!,.?]|\b)"
+    r"|let(?:'|’)s\s+"
+    r"|let\s+me\s+"
+    r"|what\s+if\b"
+    r"|why\s+did\b"
+    r"|i\s+(?:should|need\s+to|will|am\s+going\s+to)\b"
+    r"|now\s+i(?:'|’)ll\b"
+    r"|we\s+need\s+to\b"
+    r"|the\s+user\s+(?:wants|asked)\b"
+    r"|maybe\b"
+    r"|actually(?:[,.]|\b)"
+    r")",
+)
+
+_FINAL_ANSWER_BOUNDARY_RE = re.compile(
+    r"(?im)^\s*(?:"
+    r"#{1,6}\s+\d+[.)]?\s+\S"
+    r"|(?:#{1,6}\s*)?(?:\d+[.)]\s*)?"
+    r"(?:ответ|итог|вывод|результат|кратко|финальн\w*\s+ответ"
+    r"|summary|final\s+answer|conclusion|result)\b"
+    r"|\d+[.)]\s+[A-ZА-ЯЁ][^\n]{6,}"
+    r")",
+)
+
+
+def _strip_leaked_reasoning_prefix(text: str) -> str:
+    """Remove model scratchpad text that leaked before a structured answer.
+
+    Some custom chat providers emit their internal deliberation as normal
+    assistant content instead of hidden reasoning. Gateway progress/interim
+    switches cannot suppress that, so chat surfaces need a last-mile guard.
+    Keep this conservative: strip only when scratch-style markers occur before
+    a later clear final-answer boundary, leaving ordinary answers untouched.
+    """
+    body = str(text or "")
+    if len(body) < 120:
+        return body
+    first_marker = _LEAKED_REASONING_MARKER_RE.search(body)
+    if not first_marker:
+        return body
+    for boundary in _FINAL_ANSWER_BOUNDARY_RE.finditer(body):
+        if boundary.start() <= first_marker.start():
+            continue
+        prefix = body[: boundary.start()]
+        if _LEAKED_REASONING_MARKER_RE.search(prefix):
+            stripped = body[boundary.start():].lstrip()
+            return stripped or body
+    return body
+
+
 def _sanitize_gateway_final_response(platform: Any, text: str) -> str:
     """Sanitize final gateway replies before sending them to chat surfaces.
 
@@ -432,6 +486,7 @@ def _sanitize_gateway_final_response(platform: Any, text: str) -> str:
         return ""
 
     redacted = _redact_gateway_user_facing_secrets(str(text))
+    redacted = _strip_leaked_reasoning_prefix(redacted)
     if _looks_like_gateway_provider_error(redacted):
         return _gateway_provider_error_reply(redacted)
     return redacted
