@@ -215,6 +215,27 @@ Let's present a very clean, structured answer, without intermediate thoughts.
     assert "Hood Launchpad" in sanitized
 
 
+def test_chat_final_response_keeps_markdown_table_before_late_reasoning():
+    """Do not discard a useful answer that appears before late scratchpad text."""
+    raw = """| Contract | Token (scan) | Dexscreener | Website | Twitter | Project / note | Wallets 24h | Interactions 24h | Status |
+|---|---|---|---|---|---|---:|---:|---|
+| [0xfe2e...98a4](https://etherscan.io/address/0xfe2e276ec427cea3ee16f34cd1f617df62b798a4) | [cUSD](https://etherscan.io/token/0xcccc62962d17b8914c62d74ffb843d73b2a3cccc) | [pair](https://dexscreener.com/ethereum/0x755ba79de3efc0cf4709fe28b78cb7268aa408f9b565ad10e13f3a59702b5ff6) | - | - | ERC1967Proxy | 521 | 521 | verified exact match |
+| [0x50dc...1aec](https://etherscan.io/address/0x50dce7e3b24510ec6ec2f7ad3b2035aa32861aec) | [USDT & USDC-LP](https://etherscan.io/token/0x923c67ced114dd7341e65c0e2be47f3b0927d667) | - | - | - | ERC1967Proxy | 172 | 173 | verified exact match |
+
+Wait, this is late scratchpad text that should not cause the table to be removed.
+Let's present a concise answer.
+
+### 1. Summary
+The verified contracts are listed above.
+"""
+
+    sanitized = _sanitize_gateway_final_response(Platform.TELEGRAM, raw)
+
+    assert sanitized == raw
+    assert sanitized.startswith("| Contract | Token (scan) |")
+    assert "0xfe2e...98a4" in sanitized
+
+
 def test_chat_final_response_keeps_wait_when_it_is_part_of_normal_answer():
     """The scratchpad filter needs a final-answer boundary before stripping."""
     raw = (

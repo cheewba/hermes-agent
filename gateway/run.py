@@ -439,6 +439,28 @@ _FINAL_ANSWER_BOUNDARY_RE = re.compile(
     r")",
 )
 
+_MARKDOWN_TABLE_BLOCK_RE = re.compile(r"(?m)^\s*\|.+\|\s*$\n^\s*\|[-:\s|]+\|\s*$")
+_MAX_REASONING_PREAMBLE_CHARS = 700
+_MAX_REASONING_PREAMBLE_LINES = 8
+
+
+def _has_substantive_content_before_reasoning(prefix: str) -> bool:
+    """Return True when prefix looks like user-facing content, not scratchpad."""
+    stripped = str(prefix or "").strip()
+    if not stripped:
+        return False
+    if _MARKDOWN_TABLE_BLOCK_RE.search(prefix):
+        return True
+
+    lines = [line for line in stripped.splitlines() if line.strip()]
+    if len(lines) > _MAX_REASONING_PREAMBLE_LINES:
+        return True
+    if len(stripped) > _MAX_REASONING_PREAMBLE_CHARS:
+        return True
+
+    table_like_lines = [line for line in lines if line.lstrip().startswith("|")]
+    return len(table_like_lines) >= 2
+
 
 def _strip_leaked_reasoning_prefix(text: str) -> str:
     """Remove model scratchpad text that leaked before a structured answer.
@@ -454,6 +476,8 @@ def _strip_leaked_reasoning_prefix(text: str) -> str:
         return body
     first_marker = _LEAKED_REASONING_MARKER_RE.search(body)
     if not first_marker:
+        return body
+    if _has_substantive_content_before_reasoning(body[: first_marker.start()]):
         return body
     for boundary in _FINAL_ANSWER_BOUNDARY_RE.finditer(body):
         if boundary.start() <= first_marker.start():
