@@ -1,72 +1,20 @@
-"""Regression tests for browser cleanup orchestration."""
+"""Regression tests for browser session cleanup and screenshot recovery."""
 
-import json
-
-
-class _FakeSession:
-    def __init__(self, task_id: str):
-        self.task_id = task_id
-        self.last_activity = 0.0
-        self.metadata = {}
-
-
-class _FakeBackend:
-    def __init__(self, name="fake"):
-        self._name = name
-        self.closed: list[str] = []
-        self.cleaned: list[str] = []
-        self.sessions = [_FakeSession("task-1"), _FakeSession("task-2")]
-
-    def backend_name(self):
-        return self._name
-
-    def list_sessions(self):
-        return list(self.sessions)
-
-    def close_session(self, task_id: str):
-        self.closed.append(task_id)
-        self.sessions = [s for s in self.sessions if s.task_id != task_id]
-        return True
-
-    def emergency_cleanup(self, task_id: str):
-        self.cleaned.append(task_id)
-
-
-class _FakePatchrightBackend(_FakeBackend):
-    def __init__(self, *, supports_runtime_proxy: bool = True):
-        super().__init__("patchright")
-        self.runtime_proxy_calls: list[tuple[str, dict | None]] = []
-        self._supports_runtime_proxy = supports_runtime_proxy
-
-    def supports_runtime_proxy(self, task_id: str | None = None):
-        return self._supports_runtime_proxy
-
-    def set_runtime_proxy(self, task_id: str, proxy: dict | None):
-        self.runtime_proxy_calls.append((task_id, proxy))
-
-
-class _ResettingPatchrightBackend(_FakePatchrightBackend):
-    def __init__(self):
-        super().__init__()
-        self.current_proxy: dict | None = None
-
-    def set_runtime_proxy(self, task_id: str, proxy: dict | None):
-        super().set_runtime_proxy(task_id, proxy)
-        self.current_proxy = proxy
-
-    def close_session(self, task_id: str):
-        self.current_proxy = None
-        return super().close_session(task_id)
+from unittest.mock import patch
+from tools import browser_tool_lifecycle as bt_lifecycle
 
 
 class TestScreenshotPathRecovery:
     def test_extracts_standard_absolute_path(self):
-        from tools.browser_tool import _extract_screenshot_path_from_text
+        from tools.browser_tool_snapshot import _extract_screenshot_path_from_text
 
-        assert _extract_screenshot_path_from_text("Screenshot saved to /tmp/foo.png") == "/tmp/foo.png"
+        assert (
+            _extract_screenshot_path_from_text("Screenshot saved to /tmp/foo.png")
+            == "/tmp/foo.png"
+        )
 
     def test_extracts_quoted_absolute_path(self):
-        from tools.browser_tool import _extract_screenshot_path_from_text
+        from tools.browser_tool_snapshot import _extract_screenshot_path_from_text
 
         assert (
             _extract_screenshot_path_from_text(
@@ -77,121 +25,196 @@ class TestScreenshotPathRecovery:
 
 
 class TestBrowserCleanup:
-    def test_cleanup_browser_closes_task_across_backends(self, monkeypatch):
+    def setup_method(self):
         from tools import browser_tool
 
-        backend_a = _FakeBackend("a")
-        backend_b = _FakeBackend("b")
+        self.browser_tool = browser_tool
+        self.orig_active_sessions = browser_tool._active_sessions.copy()
+        self.orig_session_last_activity = browser_tool._session_last_activity.copy()
+        self.orig_recording_sessions = browser_tool._recording_sessions.copy()
+        self.orig_cleanup_done = browser_tool._cleanup_done
 
-        monkeypatch.setattr(browser_tool, "get_initialized_backends", lambda: [backend_a, backend_b])
-        monkeypatch.setattr(browser_tool, "_get_backend", lambda: backend_a)
+    def teardown_method(self):
+        self.browser_tool._active_sessions.clear()
+        self.browser_tool._active_sessions.update(self.orig_active_sessions)
+        self.browser_tool._session_last_activity.clear()
+        self.browser_tool._session_last_activity.update(self.orig_session_last_activity)
+        self.browser_tool._recording_sessions.clear()
+        self.browser_tool._recording_sessions.update(self.orig_recording_sessions)
+        self.browser_tool._cleanup_done = self.orig_cleanup_done
 
-        browser_tool.cleanup_browser("task-1")
+    def test_cleanup_browser_clears_tracking_state(self):
+        browser_tool = self.browser_tool
+        browser_tool._active_sessions["task-1"] = {
+            "session_name": "sess-1",
+            "bb_session_id": None,
+        }
+        browser_tool._session_last_activity["task-1"] = 123.0
 
-        assert "task-1" in backend_a.closed
-        assert "task-1" in backend_b.closed
+        with (
+            patch("tools.browser_tool._maybe_stop_recording") as mock_stop,
+            patch(
+                "tools.browser_tool_session._run_browser_command",
+                return_value={"success": True},
+            ) as mock_run,
+            patch("tools.browser_tool.os.path.exists", return_value=False),
+        ):
+            bt_lifecycle.cleanup_browser("task-1")
 
-    def test_browser_close_returns_warning_when_session_missing(self, monkeypatch):
-        from tools import browser_tool
+        assert "task-1" not in browser_tool._active_sessions
+        assert "task-1" not in browser_tool._session_last_activity
+        mock_stop.assert_called_once_with("task-1")
+        assert mock_run.call_args.args[:2] == ("task-1", "close")
 
-        backend = _FakeBackend("a")
-        backend.sessions = []
 
-        monkeypatch.setattr(browser_tool, "get_initialized_backends", lambda: [backend])
-        monkeypatch.setattr(browser_tool, "_get_backend", lambda: backend)
-
-        result = json.loads(browser_tool.browser_close("task-404"))
-
-        assert result["success"] is True
-        assert result["closed"] is True
-        assert "warning" in result
-
-    def test_emergency_cleanup_calls_backend_hooks(self, monkeypatch):
-        from tools import browser_tool
-
-        backend = _FakeBackend("a")
-
-        monkeypatch.setattr(browser_tool, "get_initialized_backends", lambda: [backend])
+    def test_emergency_cleanup_clears_all_tracking_state(self):
+        browser_tool = self.browser_tool
         browser_tool._cleanup_done = False
+        browser_tool._active_sessions["task-1"] = {"session_name": "sess-1"}
+        browser_tool._active_sessions["task-2"] = {"session_name": "sess-2"}
+        browser_tool._session_last_activity["task-1"] = 1.0
+        browser_tool._session_last_activity["task-2"] = 2.0
+        browser_tool._recording_sessions.update({"task-1", "task-2"})
 
-        browser_tool._emergency_cleanup_all_sessions()
+        with patch("tools.browser_tool_lifecycle.cleanup_all_browsers") as mock_cleanup_all:
+            bt_lifecycle._emergency_cleanup_all_sessions()
 
-        assert backend.cleaned == ["task-1", "task-2"]
+        mock_cleanup_all.assert_called_once_with()
+        assert browser_tool._active_sessions == {}
+        assert browser_tool._session_last_activity == {}
+        assert browser_tool._recording_sessions == set()
         assert browser_tool._cleanup_done is True
 
-    def test_browser_set_proxy_applies_runtime_override_and_restarts_session(self, monkeypatch):
+
+class TestInactivityJanitorMultiplex:
+    """#86402 / #100738: the process-global janitor thread has no profile scope."""
+
+    def setup_method(self):
+        from agent import secret_scope
         from tools import browser_tool
 
-        backend = _FakePatchrightBackend()
-        monkeypatch.setattr(browser_tool, "PatchrightBackend", _FakePatchrightBackend)
-        monkeypatch.setattr(browser_tool, "_get_backend", lambda: backend)
-        monkeypatch.setattr(browser_tool, "get_initialized_backends", lambda: [backend])
-
-        result = json.loads(
-            browser_tool.browser_set_proxy(
-                proxy_url="http://user:pass@proxy.example:8080",
-                task_id="task-proxy",
+        self.bt = browser_tool
+        self.saved = {
+            name: getattr(browser_tool, name).copy()
+            for name in (
+                "_active_sessions", "_session_last_activity",
+                "_session_owner_homes", "_cleanup_failures", "_recording_sessions",
             )
+        }
+        self.orig_timeout = browser_tool.BROWSER_SESSION_INACTIVITY_TIMEOUT
+        browser_tool.BROWSER_SESSION_INACTIVITY_TIMEOUT = 0
+        for name in self.saved:
+            getattr(browser_tool, name).clear()
+        secret_scope.set_multiplex_active(True)
+
+    def teardown_method(self):
+        from agent import secret_scope
+
+        secret_scope.set_multiplex_active(False)
+        self.bt.BROWSER_SESSION_INACTIVITY_TIMEOUT = self.orig_timeout
+        for name, saved in self.saved.items():
+            live = getattr(self.bt, name)
+            live.clear()
+            live.update(saved)
+
+    def test_janitor_tears_down_under_owner_profile_scope(self, tmp_path, monkeypatch):
+        from agent import secret_scope
+        from hermes_constants import (
+            get_hermes_home, reset_hermes_home_override, set_hermes_home_override,
         )
 
-        assert result["success"] is True
-        assert result["session_restarted"] is True
-        assert result["proxy"]["server"] == "http://proxy.example:8080"
-        assert result["proxy"]["has_auth"] is True
-        assert backend.runtime_proxy_calls == [
-            ("task-proxy", {"url": "http://user:pass@proxy.example:8080"})
-        ]
-        assert "task-proxy" in backend.closed
+        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        monkeypatch.delenv("CAMOFOX_URL", raising=False)
+        monkeypatch.delenv("BROWSER_CDP_URL", raising=False)
+        p1 = tmp_path / "profiles" / "p1"
+        p1.mkdir(parents=True)
+        (p1 / ".env").write_text("CAMOFOX_URL=http://127.0.0.1:1\n", encoding="utf-8")
 
-    def test_browser_set_proxy_clear_removes_runtime_override(self, monkeypatch):
+        # Profile p1's turn opens the session; the janitor later runs unscoped.
+        home_tok = set_hermes_home_override(str(p1))
+        scope_tok = secret_scope.set_secret_scope(secret_scope.build_profile_secret_scope(p1))
+        try:
+            bt_lifecycle._update_session_activity("t1")
+            self.bt._active_sessions["t1"] = {"session_name": "s1", "bb_session_id": None}
+        finally:
+            secret_scope.reset_secret_scope(scope_tok)
+            reset_hermes_home_override(home_tok)
+        self.bt._session_last_activity["t1"] -= 10
+
+        seen = {}
+
+        def fake_close(task_id, cmd, args, timeout=None):
+            seen["home"] = str(get_hermes_home())
+            seen["url"] = secret_scope.get_secret("CAMOFOX_URL")
+            return {"success": True}
+
+        with (
+            patch("tools.browser_tool_session._run_browser_command", side_effect=fake_close),
+            patch("tools.browser_camofox._delete", return_value={}),
+            patch("tools.browser_tool.os.path.exists", return_value=False),
+        ):
+            bt_lifecycle._cleanup_inactive_browser_sessions()
+
+        assert seen == {"home": str(p1), "url": "http://127.0.0.1:1"}
+        assert "t1" not in self.bt._session_last_activity
+        assert "t1" not in self.bt._active_sessions
+        assert "t1" not in self.bt._session_owner_homes
+
+    def test_repeated_failures_force_reap_and_close_cloud_session(self):
+        from unittest.mock import MagicMock
+
+        self.bt._active_sessions["t1"] = {"session_name": "s1", "bb_session_id": "bb-1"}
+        self.bt._session_last_activity["t1"] = 1.0
+        provider = MagicMock()
+
+        with (
+            patch("tools.browser_tool_lifecycle.cleanup_browser", side_effect=RuntimeError("boom")),
+            patch("tools.browser_tool_cloud._get_cloud_provider", return_value=provider),
+            patch("tools.browser_tool.os.path.exists", return_value=False),
+        ):
+            for _ in range(self.bt.MAX_INACTIVITY_CLEANUP_FAILURES - 1):
+                bt_lifecycle._cleanup_inactive_browser_sessions()
+            # An activity touch must NOT reset the failure budget.
+            bt_lifecycle._update_session_activity("t1")
+            self.bt._session_last_activity["t1"] = 1.0
+            assert self.bt._cleanup_failures["t1"] == self.bt.MAX_INACTIVITY_CLEANUP_FAILURES - 1
+            assert "t1" in self.bt._active_sessions
+            provider.close_session.assert_not_called()
+
+            bt_lifecycle._cleanup_inactive_browser_sessions()
+
+        provider.close_session.assert_called_once_with("bb-1")
+        assert "t1" not in self.bt._active_sessions
+        assert "t1" not in self.bt._session_last_activity
+        assert "t1" not in self.bt._cleanup_failures
+
+
+class TestAtexitStopSwallowsInterrupt:
+    def test_second_ctrl_c_during_join_does_not_propagate(self, monkeypatch):
+        """A second Ctrl+C while the atexit hook waits on the janitor must not escape as a
+        traceback (#10764): the thread is a daemon, the interpreter is already exiting."""
         from tools import browser_tool
 
-        backend = _FakePatchrightBackend()
-        monkeypatch.setattr(browser_tool, "PatchrightBackend", _FakePatchrightBackend)
-        monkeypatch.setattr(browser_tool, "_get_backend", lambda: backend)
-        monkeypatch.setattr(browser_tool, "get_initialized_backends", lambda: [backend])
+        class _InterruptedJoin:
+            def join(self, timeout=None):
+                raise KeyboardInterrupt
 
-        result = json.loads(browser_tool.browser_set_proxy(clear=True, task_id="task-clear"))
+        monkeypatch.setattr(browser_tool, "_cleanup_thread", _InterruptedJoin())
+        monkeypatch.setattr(browser_tool, "_cleanup_running", True)
+        bt_lifecycle._stop_browser_cleanup_thread()  # must not raise
+        assert browser_tool._cleanup_running is False
 
-        assert result["success"] is True
-        assert result["cleared"] is True
-        assert backend.runtime_proxy_calls == [("task-clear", None)]
 
-    def test_browser_set_proxy_rejects_non_patchright_backends(self, monkeypatch):
-        from tools import browser_tool
+class TestAtexitOriginUnimportable:
+    def test_hooks_stay_silent_when_origin_fresh_import_fails(self, monkeypatch):
+        """Mid-`hermes update` the on-disk tree can be half-new (new config.py importing
+        a name the old utils.py lacks yet); the fresh import in origin_module then raises
+        and the atexit hooks must stay silent (#112437)."""
+        import tools.browser_tool_origin as origin_mod
 
-        backend = _FakeBackend("agent-browser")
-        monkeypatch.setattr(browser_tool, "_get_backend", lambda: backend)
+        def _boom(_depth=2):
+            raise ImportError("cannot import name 'file_signature' from 'utils'")
 
-        result = json.loads(browser_tool.browser_set_proxy(proxy_url="http://proxy.example:8080"))
-
-        assert result["success"] is False
-        assert "patchright" in result["error"].lower()
-
-    def test_browser_set_proxy_persists_after_session_restart(self, monkeypatch):
-        from tools import browser_tool
-
-        backend = _ResettingPatchrightBackend()
-        monkeypatch.setattr(browser_tool, "PatchrightBackend", _ResettingPatchrightBackend)
-        monkeypatch.setattr(browser_tool, "_get_backend", lambda: backend)
-        monkeypatch.setattr(browser_tool, "get_initialized_backends", lambda: [backend])
-
-        result = json.loads(browser_tool.browser_set_proxy(proxy_url="http://user:pass@proxy.example:8080", task_id="task-restart"))
-
-        assert result["success"] is True
-        assert backend.current_proxy == {"url": "http://user:pass@proxy.example:8080"}
-        assert "task-restart" in backend.closed
-
-    def test_browser_set_proxy_rejects_patchright_cdp_mode(self, monkeypatch):
-        from tools import browser_tool
-
-        backend = _FakePatchrightBackend(supports_runtime_proxy=False)
-        monkeypatch.setattr(browser_tool, "PatchrightBackend", _FakePatchrightBackend)
-        monkeypatch.setattr(browser_tool, "_get_backend", lambda: backend)
-        monkeypatch.setattr(browser_tool, "get_initialized_backends", lambda: [backend])
-
-        result = json.loads(browser_tool.browser_set_proxy(proxy_url="http://proxy.example:8080", task_id="task-cdp"))
-
-        assert result["success"] is False
-        assert "cdp" in result["error"].lower()
-        assert backend.runtime_proxy_calls == []
+        monkeypatch.setattr(origin_mod, "origin_module", _boom)
+        bt_lifecycle._emergency_cleanup_all_sessions()  # must not raise
+        bt_lifecycle._stop_browser_cleanup_thread()  # must not raise
